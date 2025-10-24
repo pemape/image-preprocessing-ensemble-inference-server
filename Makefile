@@ -27,6 +27,7 @@ help: ## Show this help message
 	@echo "  install-dev  - Install development dependencies"  
 	@echo "  setup        - Setup project directories"
 	@echo "  preprocess   - Run preprocessing on test image"
+	@echo "  preprocess-batch   - Run preprocessing on test image batch"
 	@echo "  server       - Start inference server"
 	@echo "  server-debug - Start server in debug mode"
 	@echo "  client-info  - Get server information"
@@ -132,6 +133,7 @@ clean: ## Clean temporary files
 	@if exist "htmlcov" rmdir /s /q "htmlcov"
 	@if exist ".coverage" del /q ".coverage"
 	@if exist "$(OUTPUT_DIR)" rmdir /s /q "$(OUTPUT_DIR)"
+	@if exist $(PREPROCESS_OUTPUT) rmdir /s /q $(PREPROCESS_OUTPUT)
 	@if exist "debug" rmdir /s /q "debug"
 	@if exist "client_output" rmdir /s /q "client_output"
 	@echo "Cleaned temporary files!"
@@ -200,7 +202,5 @@ preprocess: ## Run fundus preprocessing on test image
 preprocess-batch: ## Run preprocessing on multiple images (use BATCH_DIR=path)
 	@echo "Running batch preprocessing..."
 	@echo "Batch directory: $(BATCH_DIR)"
-	@echo "Output: $(PREPROCESS_OUTPUT)"
-	@if not exist "$(PREPROCESS_OUTPUT)" mkdir "$(PREPROCESS_OUTPUT)"
-	$(PYTHON) fundus_preprocessor.py --config $(PREPROCESS_CONFIG) --input "$(BATCH_DIR)" --output $(PREPROCESS_OUTPUT) --batch
+	$(PYTHON) fundus_preprocessor.py --config $(PREPROCESS_CONFIG) --input "$(BATCH_DIR)" --batch
 	@echo "Batch preprocessing completed!"

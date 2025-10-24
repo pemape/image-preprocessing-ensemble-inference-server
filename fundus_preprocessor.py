@@ -20,6 +20,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Union
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 import os
 
 # Optional imports for advanced features
@@ -88,22 +89,26 @@ class FundusPreprocessor:
 
     def _create_directories(self):
         """Create necessary output directories."""
-        # Only create debug directories if debug is both enabled AND save_intermediate_images is true
+        # Only create debug directories if debug is BOTH enabled AND save_intermediate_images is true
         debug_config = self.config.get('debug', {})
-        if (debug_config.get('enabled', False) and
-            debug_config.get('save_intermediate_images', False)):
+        debug_fully_enabled = (debug_config.get('enabled', False) and
+                              debug_config.get('save_intermediate_images', False))
+
+        if debug_fully_enabled:
             debug_paths = debug_config.get('intermediate_paths', {})
             for path_key, path_value in debug_paths.items():
                 # Create the directory - path_value should be a directory path
                 os.makedirs(path_value, exist_ok=True)
             self.logger.debug("Created debug directories")
+        else:
+            self.logger.debug(f"Debug directories skipped - enabled: {debug_config.get('enabled', False)}, save_intermediate: {debug_config.get('save_intermediate_images', False)}")
 
         # Only create main output directory if NOT in debug mode or if explicitly needed
         output_dir = self.config.get('general', {}).get('output_directory')
-        if output_dir and not debug_config.get('enabled', False):
+        if output_dir and not debug_fully_enabled:
             os.makedirs(output_dir, exist_ok=True)
             self.logger.debug(f"Created output directory: {output_dir}")
-        elif debug_config.get('enabled', False):
+        elif debug_fully_enabled:
             self.logger.debug("Debug mode active - skipping main output directory creation")
         else:
             self.logger.warning("No output directory specified in config")
@@ -1098,55 +1103,184 @@ if __name__ == "__main__":
         else:
             print("ℹ️ Debug mode disabled")
 
-        # Process single image
-        image = cv2.imread(args.input)
-        if image is None:
-            print(f"Failed to load image: {args.input}")
-            exit(1)
-
-        print(f"Processing image: {Path(args.input).name}")
-
-        # Process image
-        results = preprocessor.process_image(image, Path(args.input).stem)
-
-        # In debug mode, files are already saved by _save_final_variant to debug folder
-        # Only save command-line copies if NOT in debug mode
-        if not debug_enabled:
-            # Normal mode: save results to specified output directory
-            output_dir = args.output or preprocessor.config.get('general', {}).get('output_directory')
-
-            if not output_dir:
-                print("Error: No output directory specified in args or config")
+        if args.batch:
+            # Process directory of images
+            input_path = Path(args.input)
+            if not input_path.is_dir():
+                print(f"Error: {args.input} is not a directory for batch processing")
                 exit(1)
 
-            os.makedirs(output_dir, exist_ok=True)
+            # Find all image files
+            image_extensions = ['.jpg', '.jpeg', '.png', '.tiff', '.bmp']
+            image_files = []
+            for ext in image_extensions:
+                image_files.extend(input_path.glob(f"*{ext}"))
+                image_files.extend(input_path.glob(f"*{ext.upper()}"))
 
-            for variant_name, variant_image in results.items():
-                # Convert to BGR for saving
-                if variant_image.dtype == np.float32:
-                    save_image = (variant_image * 255).astype(np.uint8)
-                else:
-                    save_image = variant_image
+            if not image_files:
+                print(f"No image files found in {args.input}")
+                exit(1)
 
-                if len(save_image.shape) == 3:
-                    save_image_bgr = cv2.cvtColor(save_image, cv2.COLOR_RGB2BGR)
-                else:
-                    save_image_bgr = save_image
+            print(f"Found {len(image_files)} images to process in batch mode")
 
-                output_path = os.path.join(output_dir, f"{Path(args.input).stem}_{variant_name}.jpg")
-                cv2.imwrite(output_path, save_image_bgr)
-                print(f"Saved {variant_name} variant to: {output_path}")
+            # Determine output directory
+            if debug_enabled:
+                # Debug mode: use debug folder for everything including reports
+                output_dir = "./debug"
+                batch_output_dir = Path(output_dir)
+                report_dir = batch_output_dir
+                print(f"🔍 Debug mode: Using debug folder for batch output and reports")
+            else:
+                # Normal mode: use configured output directory
+                output_dir = args.output or preprocessor.config.get('general', {}).get('output_directory')
+                if not output_dir:
+                    print("Error: No output directory specified in args or config")
+                    exit(1)
 
-            print(f"\n✅ Processing completed!")
-            print(f"📁 Output directory: {output_dir}")
+                batch_output_dir = Path(output_dir)
+                report_dir = batch_output_dir
+                os.makedirs(batch_output_dir, exist_ok=True)
+
+            # # Create subdirectories for each variant if not in debug mode
+            # if not debug_enabled:
+            #     variant_dirs = {}
+            #     for variant in ['original', 'rgb_clahe', 'min_pooling', 'lab_clahe', 'max_green_gsc']:
+            #         variant_dir = batch_output_dir / variant
+            #         # os.makedirs(variant_dir, exist_ok=True)
+            #         variant_dirs[variant] = variant_dir
+
+            # Process images with progress tracking
+            start_time = time.time()
+            successful_count = 0
+            failed_count = 0
+            batch_results = []
+
+            for i, image_file in enumerate(image_files, 1):
+                print(f"Processing {i}/{len(image_files)}: {image_file.name}")
+
+                try:
+                    # Load image
+                    image = cv2.imread(str(image_file))
+                    if image is None:
+                        print(f"  ❌ Failed to load image: {image_file}")
+                        failed_count += 1
+                        continue
+
+                    # Process image
+                    results = preprocessor.process_image(image, image_file.stem)
+
+                    batch_results.append({
+                        'filename': image_file.name,
+                        'status': 'success',
+                        'variants': len(results),
+                        'processing_time': time.time() - start_time
+                    })
+
+                    successful_count += 1
+                    print(f"  ✓ Processed successfully ({len(results)} variants)")
+
+                except Exception as e:
+                    print(f"  ❌ Error processing {image_file.name}: {e}")
+                    batch_results.append({
+                        'filename': image_file.name,
+                        'status': 'failed',
+                        'error': str(e)
+                    })
+                    failed_count += 1
+
+            # Create batch processing report
+            total_time = time.time() - start_time
+            batch_report = {
+                'batch_info': {
+                    'input_directory': str(input_path),
+                    'output_directory': str(batch_output_dir),
+                    'total_images': len(image_files),
+                    'successful': successful_count,
+                    'failed': failed_count,
+                    'processing_time_seconds': round(total_time, 2),
+                    'average_time_per_image': round(total_time / len(image_files), 2),
+                    'debug_mode': debug_enabled
+                },
+                'results': batch_results,
+                'config': {
+                    'variants_enabled': [name for name, cfg in preprocessor.config.get('image_variants', {}).items()
+                                       if cfg.get('enabled', False)],
+                    'target_resolution': preprocessor.config.get('general', {}).get('target_resolution'),
+                    'parallel_processing': preprocessor.config.get('performance', {}).get('parallel_variants', True)
+                }
+            }
+
+            # Save batch report
+            report_path = report_dir / f"batch_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            with open(report_path, 'w') as f:
+                json.dump(batch_report, f, indent=2, ensure_ascii=False)
+
+            print(f"\n📊 BATCH PROCESSING SUMMARY:")
+            print(f"  • Total images: {len(image_files)}")
+            print(f"  • Successful: {successful_count} ✓")
+            print(f"  • Failed: {failed_count} ❌")
+            print(f"  • Processing time: {total_time:.2f} seconds")
+            print(f"  • Average per image: {total_time / len(image_files):.2f} seconds")
+
+            if debug_enabled:
+                print(f"  🔍 Debug mode: All files saved to debug folders")
+                print(f"  📁 Check ./debug/ for intermediate and final images")
+            else:
+                print(f"  📁 Output directory: {batch_output_dir}")
+                print(f"  📁 Variants saved to: {batch_output_dir}/[variant_name]/")
+
+            print(f"  📄 Batch report: {report_path}")
+
         else:
-            # Debug mode: files already saved by preprocessor to debug folders
-            print(f"\n✅ Processing completed!")
-            print(f"🔍 Debug mode: All files saved to debug folders")
-            print(f"📁 Final variants: ./debug/07_final_resized/")
-            print(f"📁 Intermediate images: ./debug/[01-06]_*/")
+            # Process single image
+            image = cv2.imread(args.input)
+            if image is None:
+                print(f"Failed to load image: {args.input}")
+                exit(1)
 
-        if debug_enabled:
-            print(f"🔍 Debug files saved to: ./debug/")
+            print(f"Processing image: {Path(args.input).name}")
+
+            # Process image
+            results = preprocessor.process_image(image, Path(args.input).stem)
+
+            # In debug mode, files are already saved by _save_final_variant to debug folder
+            # Only save command-line copies if NOT in debug mode
+            if not debug_enabled:
+                # Normal mode: save results to specified output directory
+                output_dir = args.output or preprocessor.config.get('general', {}).get('output_directory')
+
+                if not output_dir:
+                    print("Error: No output directory specified in args or config")
+                    exit(1)
+
+                os.makedirs(output_dir, exist_ok=True)
+
+                for variant_name, variant_image in results.items():
+                    # Convert to BGR for saving
+                    if variant_image.dtype == np.float32:
+                        save_image = (variant_image * 255).astype(np.uint8)
+                    else:
+                        save_image = variant_image
+
+                    if len(save_image.shape) == 3:
+                        save_image_bgr = cv2.cvtColor(save_image, cv2.COLOR_RGB2BGR)
+                    else:
+                        save_image_bgr = save_image
+
+                    output_path = os.path.join(output_dir, f"{Path(args.input).stem}_{variant_name}.jpg")
+                    cv2.imwrite(output_path, save_image_bgr)
+                    print(f"Saved {variant_name} variant to: {output_path}")
+
+                print(f"\n✅ Processing completed!")
+                print(f"📁 Output directory: {output_dir}")
+            else:
+                # Debug mode: files already saved by preprocessor to debug folders
+                print(f"\n✅ Processing completed!")
+                print(f"🔍 Debug mode: All files saved to debug folders")
+                print(f"📁 Final variants: ./debug/07_final_resized/")
+                print(f"📁 Intermediate images: ./debug/[01-06]_*/")
+
+            if debug_enabled:
+                print(f"🔍 Debug files saved to: ./debug/")
     else:
         parser.print_help()
