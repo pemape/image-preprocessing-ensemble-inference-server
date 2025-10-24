@@ -16,6 +16,7 @@ import numpy as np
 import yaml
 import logging
 import time
+import json
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Union
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -87,15 +88,25 @@ class FundusPreprocessor:
 
     def _create_directories(self):
         """Create necessary output directories."""
-        if self.config.get('debug', {}).get('save_intermediate_images', False):
-            debug_paths = self.config.get('debug', {}).get('intermediate_paths', {})
+        # Only create debug directories if debug is both enabled AND save_intermediate_images is true
+        debug_config = self.config.get('debug', {})
+        if (debug_config.get('enabled', False) and
+            debug_config.get('save_intermediate_images', False)):
+            debug_paths = debug_config.get('intermediate_paths', {})
             for path_key, path_value in debug_paths.items():
                 # Create the directory - path_value should be a directory path
                 os.makedirs(path_value, exist_ok=True)
+            self.logger.debug("Created debug directories")
 
-        # Create main output directory
-        output_dir = self.config.get('general', {}).get('output_directory', './processed_images')
-        os.makedirs(output_dir, exist_ok=True)
+        # Only create main output directory if NOT in debug mode or if explicitly needed
+        output_dir = self.config.get('general', {}).get('output_directory')
+        if output_dir and not debug_config.get('enabled', False):
+            os.makedirs(output_dir, exist_ok=True)
+            self.logger.debug(f"Created output directory: {output_dir}")
+        elif debug_config.get('enabled', False):
+            self.logger.debug("Debug mode active - skipping main output directory creation")
+        else:
+            self.logger.warning("No output directory specified in config")
 
     def process_image(self, image: np.ndarray, image_id: str = None) -> Dict[str, np.ndarray]:
         """
@@ -181,6 +192,7 @@ class FundusPreprocessor:
     def _clip_black_borders(self, image: np.ndarray) -> np.ndarray:
         """
         Remove black borders from fundus image using all 4 methods and return the best result.
+        In debug mode, saves outputs from all methods for comparison.
         Methods implemented: morphological, contour_detection, adaptive_threshold, fixed_threshold
 
         Args:
@@ -194,62 +206,181 @@ class FundusPreprocessor:
 
         original_area = image.shape[0] * image.shape[1]
         results = {}
+        debug_config = self.config.get('debug', {})
+        debug_enabled = (debug_config.get('enabled', False) and
+                        debug_config.get('save_intermediate_images', False))
 
-        # Method 1: Morphological Operations
-        try:
-            result_morph = self._clip_morphological_direct(image)
-            crop_area = result_morph.shape[0] * result_morph.shape[1]
-            crop_ratio = crop_area / original_area
-            if crop_ratio > 0.3:  # Minimum acceptable crop ratio
-                results['morphological'] = (result_morph, crop_ratio)
-                self.logger.debug(f"Morphological method: crop ratio = {crop_ratio:.3f}")
-        except Exception as e:
-            self.logger.warning(f"Morphological method failed: {e}")
+        # Get the main method from config
+        main_method = self.config.get('black_border_clipping', {}).get('method', 'fixed_threshold')
 
-        # Method 2: Contour Detection
-        try:
-            result_contour = self._clip_contour_detection_direct(image)
-            crop_area = result_contour.shape[0] * result_contour.shape[1]
-            crop_ratio = crop_area / original_area
-            if crop_ratio > 0.3:
-                results['contour_detection'] = (result_contour, crop_ratio)
-                self.logger.debug(f"Contour detection method: crop ratio = {crop_ratio:.3f}")
-        except Exception as e:
-            self.logger.warning(f"Contour detection method failed: {e}")
+        # Test all 4 methods for comparison (always run all in debug mode)
+        methods_to_test = ['morphological', 'contour_detection', 'adaptive_threshold', 'fixed_threshold']
 
-        # Method 3: Adaptive Threshold
-        try:
-            result_adaptive = self._clip_adaptive_threshold_direct(image)
-            crop_area = result_adaptive.shape[0] * result_adaptive.shape[1]
-            crop_ratio = crop_area / original_area
-            if crop_ratio > 0.3:
-                results['adaptive_threshold'] = (result_adaptive, crop_ratio)
-                self.logger.debug(f"Adaptive threshold method: crop ratio = {crop_ratio:.3f}")
-        except Exception as e:
-            self.logger.warning(f"Adaptive threshold method failed: {e}")
+        for method in methods_to_test:
+            try:
+                if method == 'morphological':
+                    result_image = self._clip_morphological_direct(image)
+                elif method == 'contour_detection':
+                    result_image = self._clip_contour_detection_direct(image)
+                elif method == 'adaptive_threshold':
+                    result_image = self._clip_adaptive_threshold_direct(image)
+                elif method == 'fixed_threshold':
+                    result_image = self._clip_fixed_threshold_direct(image)
 
-        # Method 4: Fixed Threshold
-        try:
-            result_fixed = self._clip_fixed_threshold_direct(image)
-            crop_area = result_fixed.shape[0] * result_fixed.shape[1]
-            crop_ratio = crop_area / original_area
-            if crop_ratio > 0.3:
-                results['fixed_threshold'] = (result_fixed, crop_ratio)
-                self.logger.debug(f"Fixed threshold method: crop ratio = {crop_ratio:.3f}")
-        except Exception as e:
-            self.logger.warning(f"Fixed threshold method failed: {e}")
+                crop_area = result_image.shape[0] * result_image.shape[1]
+                crop_ratio = crop_area / original_area
 
-        # Select best result based on crop area
+                if crop_ratio > 0.3:  # Minimum acceptable crop ratio
+                    results[method] = (result_image, crop_ratio)
+                    self.logger.debug(f"{method} method: crop ratio = {crop_ratio:.3f}")
+
+                    # Save debug image for this method (always save all methods in debug mode)
+                    if debug_enabled:
+                        self._save_border_clipping_debug_image(result_image, method, crop_ratio)
+                else:
+                    self.logger.warning(f"{method} method: crop ratio {crop_ratio:.3f} below minimum threshold")
+                    if debug_enabled:
+                        # Save even failed attempts for analysis
+                        self._save_border_clipping_debug_image(result_image, f"{method}_failed", crop_ratio)
+
+            except Exception as e:
+                self.logger.warning(f"{method} method failed: {e}")
+                if debug_enabled:
+                    # Save original image as fallback for failed method
+                    self._save_border_clipping_debug_image(image, f"{method}_error", 0.0)
+
+        # Select the best result or use the main method if specified
         if not results:
             self.logger.warning("All clipping methods failed, returning original image")
+            if debug_enabled:
+                self._save_border_clipping_debug_image(image, "no_clipping_applied", 1.0)
             return image
 
-        # Choose method with largest crop area (best preservation of image content)
-        best_method = max(results.keys(), key=lambda k: results[k][1])
-        best_image = results[best_method][0]
+        # Use main method if it succeeded, otherwise use the best result
+        if main_method in results:
+            selected_method = main_method
+            selected_image = results[main_method][0]
+            selected_ratio = results[main_method][1]
+            self.logger.info(f"Using main method '{main_method}' with crop ratio {selected_ratio:.3f}")
+        else:
+            # Fallback to best method if main method failed
+            selected_method = max(results.keys(), key=lambda k: results[k][1])
+            selected_image = results[selected_method][0]
+            selected_ratio = results[selected_method][1]
+            self.logger.warning(f"Main method '{main_method}' failed, using best alternative '{selected_method}' with crop ratio {selected_ratio:.3f}")
 
-        self.logger.info(f"Selected {best_method} clipping method with crop ratio {results[best_method][1]:.3f}")
-        return best_image
+        # Save final selected result
+        if debug_enabled:
+            self._save_border_clipping_debug_image(selected_image, f"final_selected_{selected_method}", selected_ratio)
+
+            # Create a comparison summary
+            self._create_border_clipping_comparison_report(results, selected_method, main_method)
+
+        return selected_image
+
+    def _save_border_clipping_debug_image(self, image: np.ndarray, method_name: str, crop_ratio: float, image_id: str = None):
+        """Save border clipping debug images with detailed naming."""
+        # Check BOTH debug.enabled AND save_intermediate_images
+        debug_config = self.config.get('debug', {})
+        if not (debug_config.get('enabled', False) and debug_config.get('save_intermediate_images', False)):
+            return
+
+        debug_paths = debug_config.get('intermediate_paths', {})
+        black_border_path = debug_paths.get('black_border_clipped', './debug/01_black_border_clipped/')
+
+        try:
+            # Create the debug directory if it doesn't exist
+            os.makedirs(black_border_path, exist_ok=True)
+
+            # Ensure image is in correct format for saving
+            if image.dtype == np.float32:
+                save_image = (image * 255).astype(np.uint8)
+            else:
+                save_image = image
+
+            # Convert RGB to BGR for OpenCV saving
+            if len(save_image.shape) == 3:
+                save_image = cv2.cvtColor(save_image, cv2.COLOR_RGB2BGR)
+
+            # Create detailed filename with crop ratio
+            base_name = image_id or "image"
+            filename = f"{base_name}_{method_name}_crop{crop_ratio:.3f}.jpg"
+            filepath = os.path.join(black_border_path, filename)
+
+            # Save image
+            cv2.imwrite(filepath, save_image)
+            self.logger.debug(f"Saved border clipping debug image: {filepath}")
+
+        except Exception as e:
+            self.logger.error(f"Failed to save border clipping debug image {method_name}: {e}")
+
+    def _create_border_clipping_comparison_report(self, results: dict, selected_method: str, main_method: str, image_id: str = None):
+        """Create a detailed comparison report of all border clipping methods."""
+        # Check BOTH debug.enabled AND save_intermediate_images
+        debug_config = self.config.get('debug', {})
+        if not (debug_config.get('enabled', False) and debug_config.get('save_intermediate_images', False)):
+            return
+
+        debug_paths = debug_config.get('intermediate_paths', {})
+        black_border_path = debug_paths.get('black_border_clipped', './debug/01_black_border_clipped/')
+
+        try:
+            # Create report data
+            report = {
+                'timestamp': time.time(),
+                'image_id': image_id or 'unknown',
+                'main_method_configured': main_method,
+                'selected_method': selected_method,
+                'total_methods_tested': len(results) + (4 - len(results)),  # Include failed methods
+                'successful_methods': len(results),
+                'method_results': {}
+            }
+
+            # Add results for each method
+            for method, (_, crop_ratio) in results.items():
+                report['method_results'][method] = {
+                    'success': True,
+                    'crop_ratio': crop_ratio,
+                    'selected': method == selected_method,
+                    'is_main_method': method == main_method
+                }
+
+            # Add info about failed methods
+            all_methods = ['morphological', 'contour_detection', 'adaptive_threshold', 'fixed_threshold']
+            failed_methods = [m for m in all_methods if m not in results]
+            for method in failed_methods:
+                report['method_results'][method] = {
+                    'success': False,
+                    'crop_ratio': 0.0,
+                    'selected': False,
+                    'is_main_method': method == main_method,
+                    'failure_reason': 'Method failed or crop ratio below threshold'
+                }
+
+            # Save report as JSON
+            base_name = image_id or "image"
+            report_filename = f"{base_name}_border_clipping_comparison.json"
+            report_filepath = os.path.join(black_border_path, report_filename)
+
+            with open(report_filepath, 'w') as f:
+                json.dump(report, f, indent=2)
+
+            self.logger.debug(f"Saved border clipping comparison report: {report_filepath}")
+
+            # Log summary to console
+            self.logger.info("Border Clipping Methods Comparison:")
+            for method in all_methods:
+                if method in results:
+                    crop_ratio = results[method][1]
+                    status = "✓ SELECTED" if method == selected_method else "✓"
+                    main_indicator = " (MAIN)" if method == main_method else ""
+                    self.logger.info(f"  {method}{main_indicator}: {status} crop_ratio={crop_ratio:.3f}")
+                else:
+                    main_indicator = " (MAIN)" if method == main_method else ""
+                    self.logger.info(f"  {method}{main_indicator}: ✗ FAILED")
+
+        except Exception as e:
+            self.logger.error(f"Failed to create border clipping comparison report: {e}")
 
     def _clip_morphological_direct(self, image: np.ndarray) -> np.ndarray:
         """Apply morphological operations to detect and remove black borders."""
@@ -711,10 +842,12 @@ class FundusPreprocessor:
 
     def _save_debug_image(self, image: np.ndarray, stage_name: str, image_id: str):
         """Save intermediate images for debugging."""
-        if not self.config.get('debug', {}).get('save_intermediate_images', False):
+        # Check BOTH debug.enabled AND save_intermediate_images
+        debug_config = self.config.get('debug', {})
+        if not (debug_config.get('enabled', False) and debug_config.get('save_intermediate_images', False)):
             return
 
-        debug_paths = self.config.get('debug', {}).get('intermediate_paths', {})
+        debug_paths = debug_config.get('intermediate_paths', {})
         if stage_name not in debug_paths:
             return
 
@@ -741,9 +874,32 @@ class FundusPreprocessor:
             self.logger.error(f"Failed to save debug image {stage_name}: {e}")
 
     def _save_final_variant(self, image: np.ndarray, variant_name: str, image_id: str):
-        """Save final processed variants."""
-        output_dir = self.config.get('general', {}).get('output_directory', './processed_images')
+        """Save final processed variants efficiently - avoid duplication."""
+        debug_config = self.config.get('debug', {})
+        debug_enabled = (debug_config.get('enabled', False) and
+                        debug_config.get('save_intermediate_images', False))
+
+        # Get configured output directory - no fallback to avoid unwanted folder creation
+        output_dir = self.config.get('general', {}).get('output_directory')
+
+        if not output_dir:
+            self.logger.warning("No output directory specified in config - skipping final variant save")
+            return
+
+        # In debug mode, save to debug intermediate_paths instead of duplicating
+        if debug_enabled:
+            debug_paths = debug_config.get('intermediate_paths', {})
+            final_resized_path = debug_paths.get('final_resized', './debug/07_final_resized/')
+            save_location = final_resized_path
+            self.logger.debug(f"Debug mode: saving final variants to {save_location} instead of {output_dir}")
+        else:
+            # Normal mode: use configured output directory
+            save_location = output_dir
+
         try:
+            # Create the directory if it doesn't exist
+            os.makedirs(save_location, exist_ok=True)
+
             # Ensure image is in correct format for saving
             if image.dtype == np.float32:
                 save_image = (image * 255).astype(np.uint8)
@@ -754,9 +910,14 @@ class FundusPreprocessor:
             if len(save_image.shape) == 3:
                 save_image = cv2.cvtColor(save_image, cv2.COLOR_RGB2BGR)
 
-            # Create filename
-            filename = f"{image_id or 'unknown'}_{variant_name}.jpg"
-            filepath = os.path.join(output_dir, filename)
+            # Create filename with resolution info for debug mode
+            if debug_enabled:
+                resolution = f"{image.shape[1]}x{image.shape[0]}"
+                filename = f"{image_id or 'unknown'}_{variant_name}_final_{resolution}.jpg"
+            else:
+                filename = f"{image_id or 'unknown'}_{variant_name}.jpg"
+
+            filepath = os.path.join(save_location, filename)
 
             # Save image
             cv2.imwrite(filepath, save_image)
@@ -896,7 +1057,8 @@ def create_default_config(output_path: str):
                 'rgb_clahe': './debug/rgb_clahe/',
                 'min_pooling': './debug/min_pooling/',
                 'lab_clahe': './debug/lab_clahe/',
-                'max_green_gsc': './debug/max_green_gsc/'
+                'max_green_gsc': './debug/max_green_gsc/',
+                'final_resized': './debug/07_final_resized/'
             }
         }
     }
@@ -927,7 +1089,10 @@ if __name__ == "__main__":
         preprocessor = FundusPreprocessor(args.config)
 
         # Check debug settings from YAML config
-        debug_enabled = preprocessor.config.get('debug', {}).get('save_intermediate_images', False)
+        debug_config = preprocessor.config.get('debug', {})
+        debug_enabled = (debug_config.get('enabled', False) and
+                        debug_config.get('save_intermediate_images', False))
+
         if debug_enabled:
             print("🔍 Debug mode enabled via YAML config")
         else:
@@ -939,24 +1104,49 @@ if __name__ == "__main__":
             print(f"Failed to load image: {args.input}")
             exit(1)
 
+        print(f"Processing image: {Path(args.input).name}")
+
         # Process image
         results = preprocessor.process_image(image, Path(args.input).stem)
 
-        # Save results
-        output_dir = args.output or './processed_images'
-        os.makedirs(output_dir, exist_ok=True)
+        # In debug mode, files are already saved by _save_final_variant to debug folder
+        # Only save command-line copies if NOT in debug mode
+        if not debug_enabled:
+            # Normal mode: save results to specified output directory
+            output_dir = args.output or preprocessor.config.get('general', {}).get('output_directory')
 
-        for variant_name, variant_image in results.items():
-            # Convert to BGR for saving
-            if variant_image.dtype == np.float32:
-                save_image = (variant_image * 255).astype(np.uint8)
-            else:
-                save_image = variant_image
+            if not output_dir:
+                print("Error: No output directory specified in args or config")
+                exit(1)
 
-            save_image_bgr = cv2.cvtColor(save_image, cv2.COLOR_RGB2BGR)
+            os.makedirs(output_dir, exist_ok=True)
 
-            output_path = os.path.join(output_dir, f"{Path(args.input).stem}_{variant_name}.jpg")
-            cv2.imwrite(output_path, save_image_bgr)
-            print(f"Saved {variant_name} variant to: {output_path}")
+            for variant_name, variant_image in results.items():
+                # Convert to BGR for saving
+                if variant_image.dtype == np.float32:
+                    save_image = (variant_image * 255).astype(np.uint8)
+                else:
+                    save_image = variant_image
+
+                if len(save_image.shape) == 3:
+                    save_image_bgr = cv2.cvtColor(save_image, cv2.COLOR_RGB2BGR)
+                else:
+                    save_image_bgr = save_image
+
+                output_path = os.path.join(output_dir, f"{Path(args.input).stem}_{variant_name}.jpg")
+                cv2.imwrite(output_path, save_image_bgr)
+                print(f"Saved {variant_name} variant to: {output_path}")
+
+            print(f"\n✅ Processing completed!")
+            print(f"📁 Output directory: {output_dir}")
+        else:
+            # Debug mode: files already saved by preprocessor to debug folders
+            print(f"\n✅ Processing completed!")
+            print(f"🔍 Debug mode: All files saved to debug folders")
+            print(f"📁 Final variants: ./debug/07_final_resized/")
+            print(f"📁 Intermediate images: ./debug/[01-06]_*/")
+
+        if debug_enabled:
+            print(f"🔍 Debug files saved to: ./debug/")
     else:
         parser.print_help()

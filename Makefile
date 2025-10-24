@@ -27,7 +27,6 @@ help: ## Show this help message
 	@echo "  install-dev  - Install development dependencies"  
 	@echo "  setup        - Setup project directories"
 	@echo "  preprocess   - Run preprocessing on test image"
-	@echo "  preprocess-debug - Run preprocessing with debug output"
 	@echo "  server       - Start inference server"
 	@echo "  server-debug - Start server in debug mode"
 	@echo "  client-info  - Get server information"
@@ -195,31 +194,8 @@ demo: ## Run simple demo
 preprocess: ## Run fundus preprocessing on test image
 	@echo "Running fundus preprocessing..."
 	@echo "Input: $(PREPROCESS_INPUT)"
-	@echo "Output: $(PREPROCESS_OUTPUT)"
 	@echo "Config: $(PREPROCESS_CONFIG)"
-	@if not exist "$(PREPROCESS_OUTPUT)" mkdir "$(PREPROCESS_OUTPUT)"
-	$(PYTHON) fundus_preprocessor.py --config $(PREPROCESS_CONFIG) --input $(PREPROCESS_INPUT) --output $(PREPROCESS_OUTPUT)
-	@echo "Preprocessing completed! Check $(PREPROCESS_OUTPUT) for results."
-
-preprocess-debug: ## Run preprocessing with debug output enabled
-	@echo "Running fundus preprocessing with debug mode..."
-	@echo "Input: $(PREPROCESS_INPUT)"
-	@echo "Output: $(PREPROCESS_OUTPUT)"
-	@echo "Config: $(PREPROCESS_CONFIG)"
-	@if not exist "$(PREPROCESS_OUTPUT)" mkdir "$(PREPROCESS_OUTPUT)"
-	@if not exist "debug" mkdir "debug"
-	$(PYTHON) fundus_preprocessor.py --config $(PREPROCESS_CONFIG) --input $(PREPROCESS_INPUT) --output $(PREPROCESS_OUTPUT) --debug
-	@echo "Debug preprocessing completed!"
-	@echo "Check $(PREPROCESS_OUTPUT) for final results."
-	@echo "Check ./debug/ for intermediate debug images."
-
-preprocess-custom: ## Run preprocessing with custom input (use INPUT=path OUTPUT=path)
-	@echo "Running custom preprocessing..."
-	@echo "Input: $(INPUT)"
-	@echo "Output: $(OUTPUT)"
-	@if not exist "$(OUTPUT)" mkdir "$(OUTPUT)"
-	$(PYTHON) fundus_preprocessor.py --config $(PREPROCESS_CONFIG) --input "$(INPUT)" --output $(OUTPUT)
-	@echo "Custom preprocessing completed!"
+	$(PYTHON) fundus_preprocessor.py --config $(PREPROCESS_CONFIG) --input $(PREPROCESS_INPUT)
 
 preprocess-batch: ## Run preprocessing on multiple images (use BATCH_DIR=path)
 	@echo "Running batch preprocessing..."

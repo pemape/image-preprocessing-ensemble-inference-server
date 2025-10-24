@@ -462,7 +462,6 @@ debug:
   enabled: true
   save_intermediate_images: true
   verbose_logging: true
-  create_processing_report: true
 ```
 
 This saves intermediate results and creates detailed processing reports for analysis.

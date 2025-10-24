@@ -9,7 +9,7 @@ general:
   device: "cuda" # "cuda" or "cpu"
   seed: 42
   save_intermediate: false # Save intermediate processing steps for debugging
-  output_directory: "./processed_images"
+  output_directory: "./final_resized_processed_images"
 
 # Black Border Clipping Algorithm (Applied First)
 black_border_clipping:
@@ -398,19 +398,13 @@ debug:
   save_intermediate_images: true # Save each processing step
   log_processing_time: true # Log time taken for each step
   verbose_logging: true # Detailed logging
-  create_processing_report: true # Create detailed processing report
 
   # Intermediate save locations
   intermediate_paths:
     black_border_clipped: "./debug/01_black_border_clipped/"
     original: "./debug/02_original/"
-    rgb_clahe: "./debug/02_rgb_clahe/"
-    min_pooling: "./debug/03_ben_graham/"
-    lab_clahe: "./debug/04_lab_clahe/"
-    max_green_gsc: "./debug/05_max_green_gsc/"
-    final_resized: "./debug/06_final_resized/"
-
-    # # Additional debug outputs for new methods
-    # max_rgb_filter: "./debug/max_rgb_filter.jpg"
-    # avg_rgb_filter: "./debug/avg_rgb_filter.jpg"
-    # entropy_analysis: "./debug/entropy_analysis.jpg"
+    rgb_clahe: "./debug/03_rgb_clahe/"
+    min_pooling: "./debug/04_min_pooling/" # Ben Graham method
+    lab_clahe: "./debug/05_lab_clahe/"
+    max_green_gsc: "./debug/06_max_green_gsc/"
+    final_resized: "./debug/07_final_resized/"
