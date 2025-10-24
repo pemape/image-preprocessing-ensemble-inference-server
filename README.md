@@ -17,6 +17,29 @@ The preprocessing system takes a single fundus image with arbitrary resolution a
 
 ## Preprocessing Pipeline
 
+### Pipeline Architecture
+
+```
+Input Image (arbitrary resolution)
+    ↓
+Black Border Clipping (4 methods available)
+    ↓
+5 Image Variants Generation:
+├── Original (baseline)
+├── RGB-CLAHE
+├── Ben Graham Enhancement
+├── Lab-CLAHE
+└── MaxGreenGsc (3D composite)
+    ↓
+Resolution Standardization (500×500)
+    ↓
+Ensemble CNN Models (EfficientNetB4 + Xception)
+    ↓
+Voting Strategy (Soft/Hard)
+    ↓
+Final DR Classification (0-4)
+```
+
 ### Step 1: Black Border Clipping
 
 Fundus images often contain black borders that need to be removed for optimal processing:
@@ -120,7 +143,7 @@ resolution_processing:
 ```python
 # Available in your implementation
 def get_green_channel(img)    # Extract green channel
-def get_red_channel(img)      # Extract red channel  
+def get_red_channel(img)      # Extract red channel
 def get_blue_channel(img)     # Extract blue channel
 ```
 
@@ -140,7 +163,7 @@ def max_rgb_filter(image, mydict=None)
 ```python
 # Build 3D images with different combinations
 def build_avg_green_gsc_3d_img(img)           # Average RGB + Green + Grayscale
-def build_max_green_gsc_3d_img(img)           # Max RGB + Green + Grayscale  
+def build_max_green_gsc_3d_img(img)           # Max RGB + Green + Grayscale
 def build_max_green_gsc_3d_clahe_img(img)     # Above with CLAHE applied
 def build_green_gsc_clahe_img(img)            # Green + Grayscale with CLAHE
 ```
@@ -335,7 +358,7 @@ debug:
 # Pseudo-code for RGB-CLAHE
 for channel in ['R', 'G', 'B']:
     clahe = cv2.createCLAHE(
-        clipLimit=config['clip_limit'], 
+        clipLimit=config['clip_limit'],
         tileGridSize=tuple(config['tile_grid_size'])
     )
     enhanced_channel = clahe.apply(image[:,:,channel])
@@ -362,8 +385,8 @@ result = cv2.cvtColor(lab_image, cv2.COLOR_LAB2RGB)
 ```python
 # Pseudo-code for MaxGreenGsc
 weighted_green = (
-    0.2 * image[:,:,0] + 
-    0.7 * image[:,:,1] + 
+    0.2 * image[:,:,0] +
+    0.7 * image[:,:,1] +
     0.1 * image[:,:,2]
 )
 enhanced = cv2.equalizeHist(weighted_green.astype(np.uint8))
@@ -380,7 +403,7 @@ if vessel_enhancement_enabled:
 - Validates resolution constraints
 - Detects corrupted images
 
-### Processing Validation  
+### Processing Validation
 - Monitors for NaN/infinite values
 - Validates pixel value ranges
 - Ensures proper color space conversions

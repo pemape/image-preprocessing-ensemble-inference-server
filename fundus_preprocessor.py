@@ -504,24 +504,45 @@ class FundusPreprocessor:
         return result
 
     def _create_min_pooling_variant(self, image: np.ndarray) -> np.ndarray:
-        """Create min-pooling enhanced variant."""
+        """Create Ben Graham enhanced variant (originally labeled as min-pooling)."""
         config = self.config.get('image_variants', {}).get('min_pooling', {})
 
-        # Convert to grayscale for processing
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        # Get Ben Graham parameters from config
+        sigma_x = config.get('sigma_x', 10)
+        enhancement_factor = config.get('enhancement_factor', 4)
+        blur_factor = config.get('blur_factor', -4)
+        brightness_offset = config.get('brightness_offset', 128)
 
-        # Apply min pooling
-        kernel_size = config.get('kernel_size', 3)
-        kernel = np.ones((kernel_size, kernel_size), np.uint8)
+        # Apply Gaussian blur
+        gaussian_config = config.get('gaussian_blur', {})
+        kernel_size = tuple(gaussian_config.get('kernel_size', [0, 0]))
+        sigma_y = gaussian_config.get('sigma_y', 0)
 
-        # Min pooling using erosion
-        min_pooled = cv2.erode(gray, kernel, iterations=1)
+        # Create Gaussian blurred version
+        blurred_image = cv2.GaussianBlur(image, kernel_size, sigma_x, sigmaY=sigma_y)
 
-        # Enhance contrast
-        enhanced = cv2.equalizeHist(min_pooled)
+        # Apply Ben Graham enhancement: final = enhancement_factor * original + blur_factor * blurred + brightness_offset
+        # This is equivalent to: cv2.addWeighted(img, 4, blurred_image, -4, 128)
+        result = cv2.addWeighted(
+            image,
+            enhancement_factor,
+            blurred_image,
+            blur_factor,
+            brightness_offset
+        )
 
-        # Convert back to RGB
-        result = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2RGB)
+        # Post-processing options
+        post_config = config.get('post_processing', {})
+
+        # Clip values to valid range if enabled
+        if post_config.get('clip_values', True):
+            result = np.clip(result, 0, 255)
+
+        # Normalize output if enabled
+        if post_config.get('normalize', False):
+            result = result.astype(np.float32) / 255.0
+
+        self.logger.debug(f"Ben Graham enhancement applied: sigma_x={sigma_x}, enhancement_factor={enhancement_factor}, blur_factor={blur_factor}, brightness_offset={brightness_offset}")
 
         return result
 
@@ -548,23 +569,102 @@ class FundusPreprocessor:
         """Create MaxGreenGsc (Maximum Green + Grayscale Conversion) variant."""
         config = self.config.get('image_variants', {}).get('max_green_gsc', {})
 
-        # Extract green channel (index 1 in RGB)
-        green_channel = image[:, :, 1]
+        # Get max RGB filter configuration
+        max_rgb_config = config.get('max_rgb_filter', {})
+        collect_stats = max_rgb_config.get('collect_statistics', True)
 
-        # Apply histogram equalization to green channel
-        if config.get('apply_histogram_equalization', True):
-            green_enhanced = cv2.equalizeHist(green_channel)
+        # Get channel combination configuration
+        channel_config = config.get('channel_combination', {})
+        use_clahe = channel_config.get('use_clahe', True)
+        components = channel_config.get('components', {})
+
+        # Get enhancement configuration
+        enhancement_config = config.get('enhancement', {})
+        clahe_config = enhancement_config.get('clahe', {})
+        clahe_clip_limit = clahe_config.get('clip_limit', 4.0)
+        clahe_tile_size = tuple(clahe_config.get('tile_grid_size', [8, 8]))
+
+        # Step 1: Create max RGB filter (based on your original max_rgb_filter function)
+        B, G, R = cv2.split(image)
+        M = np.maximum(np.maximum(R, G), B)
+
+        # Optional: Collect statistics about RGB channel dominance
+        if collect_stats:
+            diff_max_R = (M == R)
+            diff_max_G = (M == G)
+            diff_max_B = (M == B)
+
+            red_dominance = np.sum(diff_max_R) / diff_max_R.size * 100
+            green_dominance = np.sum(diff_max_G) / diff_max_G.size * 100
+            blue_dominance = np.sum(diff_max_B) / diff_max_B.size * 100
+
+            self.logger.debug(f"RGB dominance - R: {red_dominance:.1f}%, G: {green_dominance:.1f}%, B: {blue_dominance:.1f}%")
+
+        # Step 2: Get green channel
+        green_channel = G
+
+        # Step 3: Create grayscale version
+        grayscale = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+
+        # Step 4: Apply CLAHE if enabled (based on your original build_max_green_gsc_3d_clahe_img)
+        if use_clahe:
+            clahe = cv2.createCLAHE(clipLimit=clahe_clip_limit, tileGridSize=clahe_tile_size)
+
+            # Apply CLAHE to each component
+            max_equalized = clahe.apply(M)
+            green_equalized = clahe.apply(green_channel)
+            gsc_equalized = clahe.apply(grayscale)
+
+            # Merge the CLAHE-enhanced channels (max_rgb, green, grayscale)
+            result = cv2.merge((max_equalized, green_equalized, gsc_equalized))
         else:
-            green_enhanced = green_channel
+            # Merge without CLAHE enhancement
+            result = cv2.merge((M, green_channel, grayscale))
 
-        # Convert to 3-channel grayscale
-        result = cv2.cvtColor(green_enhanced, cv2.COLOR_GRAY2RGB)
+        # Step 5: RGB conversion method
+        rgb_conversion_config = config.get('rgb_conversion', {})
+        conversion_method = rgb_conversion_config.get('method', 'merge_channels')
 
-        # Optional: Apply additional contrast enhancement
-        if config.get('apply_contrast_enhancement', True):
-            alpha = config.get('contrast_alpha', 1.2)
-            beta = config.get('contrast_beta', 10)
-            result = cv2.convertScaleAbs(result, alpha=alpha, beta=beta)
+        if conversion_method == 'replicate':
+            # Replicate one channel to all three
+            if len(result.shape) == 2:
+                result = cv2.cvtColor(result, cv2.COLOR_GRAY2RGB)
+        elif conversion_method == 'colorize':
+            # Apply false coloring (if grayscale)
+            if len(result.shape) == 2:
+                colormap = getattr(cv2, f'COLORMAP_{rgb_conversion_config.get("colorize_map", "JET").upper()}', cv2.COLORMAP_JET)
+                result = cv2.applyColorMap(result, colormap)
+                result = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
+        # For 'merge_channels', result is already a 3-channel image
+
+        # Step 6: Optional vessel enhancement (if enabled)
+        vessel_config = enhancement_config.get('vessel_enhancement', {})
+        if vessel_config.get('enabled', False) and ADVANCED_FILTERING:
+            try:
+                vessel_method = vessel_config.get('method', 'frangi')
+                sigma_range = vessel_config.get('sigma_range', [1, 8])
+                sigma_step = vessel_config.get('sigma_step', 2)
+
+                # Convert to grayscale for vessel detection
+                gray_for_vessels = cv2.cvtColor(result, cv2.COLOR_RGB2GRAY)
+
+                if vessel_method == 'frangi':
+                    from skimage.filters import frangi
+                    alpha = vessel_config.get('frangi_alpha', 0.5)
+                    beta = vessel_config.get('frangi_beta', 0.5)
+                    gamma = vessel_config.get('frangi_gamma', 15)
+
+                    vessels = frangi(gray_for_vessels,
+                                   sigmas=range(sigma_range[0], sigma_range[1], sigma_step),
+                                   alpha=alpha, beta=beta, gamma=gamma)
+                    vessels = (vessels * 255).astype(np.uint8)
+                    result = cv2.cvtColor(vessels, cv2.COLOR_GRAY2RGB)
+
+                self.logger.debug(f"Applied {vessel_method} vessel enhancement")
+            except Exception as e:
+                self.logger.warning(f"Vessel enhancement failed: {e}")
+
+        self.logger.debug(f"MaxGreenGsc variant created: use_clahe={use_clahe}, conversion_method={conversion_method}")
 
         return result
 
@@ -749,7 +849,18 @@ def create_default_config(output_path: str):
                 'tile_grid_size': [8, 8]
             },
             'min_pooling': {
-                'kernel_size': 3
+                'sigma_x': 10,
+                'enhancement_factor': 4,
+                'blur_factor': -4,
+                'brightness_offset': 128,
+                'gaussian_blur': {
+                    'kernel_size': [0, 0],
+                    'sigma_y': 0
+                },
+                'post_processing': {
+                    'clip_values': True,
+                    'normalize': False
+                }
             },
             'lab_clahe': {
                 'clip_limit': 3.0,
