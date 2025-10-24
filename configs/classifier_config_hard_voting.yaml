@@ -1,0 +1,50 @@
+log_level: INFO
+force_cpu: false
+voting_strategy: hard  # Hard voting - majority vote
+
+models:
+  # EfficientNetB4 model with Original preprocessing
+  - architecture: efficientnetb4
+    dataset: APTOS5
+    preprocessing_variant: original
+    model_path: "c:\\ProgrammingProjects\\python\\dp\\lbcnn_pytorch\\hns\\DR\\Original500x500\\EfficientNetB4\\Nadam\\8\\301_08_2023_07_50_40\\Aptos5_8_EfficientNetB4_opt=Nadam_lr=0.001_best_ckp.pt"
+    num_classes: 5
+    input_size: [500, 500]
+    
+  # EfficientNetB4 model with RGBClahe preprocessing
+  - architecture: efficientnetb4
+    dataset: APTOS5
+    preprocessing_variant: rgb_clahe
+    model_path: "c:\\ProgrammingProjects\\python\\dp\\lbcnn_pytorch\\hns\\DR\\RGBClahe500x500\\EfficientNetB4\\Nadam\\8\\201_08_2023_14_54_36\\Aptos5_8_EfficientNetB4_opt=Nadam_lr=0.001_best_ckp.pt"
+    num_classes: 5
+    input_size: [500, 500]
+    
+  # Xception model with Original preprocessing
+  - architecture: xception
+    dataset: APTOS5
+    preprocessing_variant: original
+    model_path: "c:\\ProgrammingProjects\\python\\dp\\lbcnn_pytorch\\hns\\DR\\Original500x500\\Xception\\Nadam\\8\\301_09_2023_17_18_45\\Aptos5_8_Xception_opt=Nadam_lr=0.001_best_ckp.pt"
+    num_classes: 5
+    input_size: [500, 500]
+    
+  # Xception model with RGBClahe preprocessing
+  - architecture: xception
+    dataset: APTOS5
+    preprocessing_variant: rgb_clahe
+    model_path: "c:\\ProgrammingProjects\\python\\dp\\lbcnn_pytorch\\hns\\DR\\RGBClahe500x500\\Xception\\Nadam\\8\\101_05_2023_18_34_40\\Aptos5_8_Xception_opt=Nadam_lr=0.001_best_ckp.pt"
+    num_classes: 5
+    input_size: [500, 500]
+
+class_names: 
+  - "No DR"
+  - "Mild DR" 
+  - "Moderate DR"
+  - "Severe DR"
+  - "Proliferative DR"
+
+confidence_threshold: 0.5
+
+batch_processing:
+  enabled: true
+  max_batch_size: 4
+  parallel_models: true

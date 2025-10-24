@@ -1,0 +1,416 @@
+# Fundus Image Preprocessing Configuration for Ensemble Model
+# Based on: "Ensemble of pre-processing techniques with CNN for diabetic retinopathy detection"
+# Paper: https://ietresearch.onlinelibrary.wiley.com/doi/full/10.1049/ipr2.12987
+
+# General Configuration
+general:
+  target_resolution: [500, 500]  # Final resolution for all processed images [width, height]
+  num_workers: 4
+  device: "cuda"  # "cuda" or "cpu"
+  seed: 42
+  save_intermediate: false  # Save intermediate processing steps for debugging
+  output_directory: "./processed_images"
+
+# Black Border Clipping Algorithm (Applied First)
+black_border_clipping:
+  enabled: true
+  method: "fixed_threshold"  # "fixed_threshold", "adaptive_threshold", "contour_detection", "morphological"
+  
+  # Fixed threshold parameters (simple approach)
+  fixed_threshold:
+    default_tolerance: 18     # Fixed tolerance value for all images
+    bright_border_tolerance: 249  # Special tolerance for bright borders (pixel > 200)
+    bright_border_threshold: 200  # Threshold to detect bright borders
+    use_grayscale_conversion: true  # Convert RGB to grayscale first
+
+  # Adaptive threshold parameters
+  adaptive_threshold:
+    gaussian_kernel_size: 11  # Must be odd number
+    threshold_constant: 2     # Constant subtracted from mean
+    erosion_iterations: 2     # Number of erosion operations
+    dilation_iterations: 3    # Number of dilation operations
+  
+  # Contour detection parameters
+  contour_detection:
+    blur_kernel: 5           # Gaussian blur kernel size
+    threshold_value: 10      # Binary threshold value
+    min_contour_area: 1000   # Minimum contour area to consider
+  
+  # Morphological operations
+  morphological:
+    kernel_size: [5, 5]      # Morphological kernel size
+    opening_iterations: 2     # Opening operations
+    closing_iterations: 3     # Closing operations
+  
+  # Post-processing
+  padding_percent: 0.02      # Add small padding after clipping (2% of image size)
+  min_crop_ratio: 0.3       # Minimum crop ratio to prevent over-cropping
+
+# Five Image Generation Pipeline
+# 1. Original clipped image (no additional preprocessing)
+# 2. RGB-CLAHE enhanced image  
+# 3. Ben Graham enhanced image (feature enhancement with Gaussian blur)
+# 4. Lab-CLAHE enhanced image
+# 5. MaxGreenGsc enhanced image
+
+image_variants:
+  # Original clipped image (baseline)
+  original:
+    enabled: true
+    description: "Original fundus image after black border clipping"
+    additional_processing: []  # No additional preprocessing
+  
+  # RGB-CLAHE Enhancement
+  rgb_clahe:
+    enabled: true
+    description: "RGB channels enhanced with CLAHE individually"
+    clip_limit: 2.0           # CLAHE clip limit
+    tile_grid_size: [8, 8]    # CLAHE tile grid size [width, height]
+    normalize_channels: true   # Normalize each channel independently
+    
+    # Channel-specific parameters
+    red_channel:
+      clip_limit: 2.0
+      tile_grid_size: [8, 8]
+    green_channel:
+      clip_limit: 2.5          # Often higher for green channel
+      tile_grid_size: [8, 8]
+    blue_channel:
+      clip_limit: 2.0
+      tile_grid_size: [8, 8]
+  
+  # Ben Graham Enhancement (CORRECTED - was incorrectly labeled as min-pooling)
+  ben_graham:
+    enabled: true
+    description: "Ben Graham feature enhancement using Gaussian blur and weighted subtraction"
+    sigma_x: 10              # Gaussian blur sigma parameter
+    enhancement_factor: 4     # Weight factor for original image (multiplied by 4)
+    blur_factor: -4          # Weight factor for blurred image (multiplied by -4)
+    brightness_offset: 128   # Brightness offset added to final result
+    
+    # Implementation: cv2.addWeighted(img, 4, blurred_image, -4, 128)
+    # Formula: final = 4*original - 4*blurred + 128
+    gaussian_blur:
+      kernel_size: [0, 0]    # Automatic kernel size calculation
+      sigma_x: 10            # Standard deviation in X direction
+      sigma_y: 0             # Standard deviation in Y direction (0 = same as sigma_x)
+    
+    # Post-processing options
+    post_processing:
+      clip_values: true      # Clip values to valid range [0, 255]
+      normalize: false       # Whether to normalize the output
+  
+  # Lab-CLAHE Enhancement  
+  lab_clahe:
+    enabled: true
+    description: "CLAHE applied to L channel in LAB color space"
+    clip_limit: 3.0          # CLAHE clip limit for L channel
+    tile_grid_size: [8, 8]   # CLAHE tile grid size
+    
+    # LAB color space parameters
+    lab_conversion:
+      l_channel_only: true    # Apply CLAHE only to L channel
+      preserve_ab: true       # Keep A and B channels unchanged
+    
+    # Post-processing
+    post_processing:
+      saturation_boost: 1.1   # Slight saturation increase
+      hue_preservation: true  # Maintain original hue
+  
+  # MaxGreenGsc (Maximum Green Grayscale) Enhancement
+  max_green_gsc:
+    enabled: true
+    description: "Enhanced processing using max RGB filter, green channel, and grayscale"
+    
+    # Method selection for building the composite image
+    method: "max_rgb_with_green_grayscale"  # "max_rgb_only", "avg_rgb_with_green_grayscale"
+    
+    # Max RGB filter parameters
+    max_rgb_filter:
+      enabled: true
+      collect_statistics: true  # Collect statistics about RGB channel dominance
+      zero_non_max: true       # Zero out non-maximum channels in max_3drgb_filter
+    
+    # Channel combination for 3D image building
+    channel_combination:
+      # For build_max_green_gsc_3d_clahe_img method
+      use_clahe: true          # Apply CLAHE to each component
+      components:
+        max_rgb: true          # Include max RGB filter result
+        green_channel: true    # Include original green channel
+        grayscale: true        # Include grayscale version
+    
+    # Enhancement parameters
+    enhancement:
+      histogram_equalization: false  # Not used in actual implementation
+      clahe:
+        enabled: true
+        clip_limit: 4.0        # Higher clip limit for enhanced contrast
+        tile_grid_size: [8, 8]
+      
+      # Vessel enhancement (available but not in main implementation)
+      vessel_enhancement:
+        enabled: false         # Set to true to enable Frangi filtering
+        method: "frangi"       # "frangi", "sato", "meijering"
+        sigma_range: [1, 8]    # Scale range for vessel detection
+        sigma_step: 2          # Step size for sigma values
+        
+        # Frangi filter parameters
+        frangi_alpha: 0.5      # Plate-like structures sensitivity
+        frangi_beta: 0.5       # Blob-like structures sensitivity
+        frangi_gamma: 15       # Background suppression
+    
+    # RGB conversion (for grayscale results)
+    rgb_conversion:
+      method: "merge_channels"  # "replicate", "colorize", "merge_channels"
+      colorize_map: "jet"      # Color map for false coloring (if method is "colorize")
+
+# Additional Preprocessing Methods Available (from actual implementation)
+additional_methods:
+  # Channel extraction methods
+  channel_extraction:
+    green_channel:
+      enabled: false
+      description: "Extract green channel only"
+    red_channel:
+      enabled: false  
+      description: "Extract red channel only"
+    blue_channel:
+      enabled: false
+      description: "Extract blue channel only"
+  
+  # Advanced filtering methods
+  advanced_filters:
+    max_3d_rgb_filter:
+      enabled: false
+      description: "Max RGB filter that zeros out non-maximum channels"
+    
+    avg_rgb_filter:
+      enabled: false
+      description: "Average of RGB channels"
+      
+    max_rgb_filter_with_stats:
+      enabled: false
+      description: "Max RGB filter with statistical analysis"
+      collect_statistics: true
+  
+  # Composite image builders
+  composite_builders:
+    avg_green_gsc_3d:
+      enabled: false
+      description: "Combines average RGB, green channel, and grayscale"
+      apply_clahe: false
+    
+    max_green_gsc_3d:
+      enabled: false
+      description: "Combines max RGB, green channel, and grayscale"
+      apply_clahe: false
+    
+    green_gsc_clahe:
+      enabled: false
+      description: "Green channel and grayscale with CLAHE"
+  
+  # Channel-specific CLAHE methods
+  channel_specific_clahe:
+    rgb_channels_clahe:
+      enabled: false
+      description: "Apply CLAHE to all RGB channels"
+      clip_limit: 2.0
+      tile_grid_size: [8, 8]
+    
+    green_channel_clahe:
+      enabled: false
+      description: "Apply CLAHE to green channel only"
+      clip_limit: 2.5
+      tile_grid_size: [8, 8]
+    
+    red_channel_clahe:
+      enabled: false
+      description: "Apply CLAHE to red channel only"
+      clip_limit: 2.0
+      tile_grid_size: [8, 8]
+    
+    grayscale_clahe:
+      enabled: false
+      description: "Apply CLAHE to grayscale image"
+      clip_limit: 2.0
+      tile_grid_size: [8, 8]
+    
+    hsv_clahe:
+      enabled: false
+      description: "Apply CLAHE to HSV V-channel"
+      clip_limit: 2.0
+      tile_grid_size: [8, 8]
+  
+  # Entropy and edge detection
+  entropy_edge_detection:
+    local_entropy:
+      enabled: false
+      description: "Local entropy calculation"
+      disk_radius: 5
+      channel: null  # null, "green", "red", "blue"
+    
+    canny_edge:
+      enabled: false
+      description: "Canny edge detection"
+      low_threshold: 100
+      high_threshold: 200
+  
+  # Histogram equalization methods
+  histogram_methods:
+    histogram_equalization_grayscale:
+      enabled: false
+      description: "Standard histogram equalization on grayscale"
+
+# Final Resolution Processing
+resolution_processing:
+  enabled: true
+  target_size: [300, 300]    # Final target resolution
+  interpolation: "bilinear"  # "nearest", "bilinear", "bicubic", "lanczos"
+  maintain_aspect_ratio: false  # Set to true to maintain aspect ratio with padding
+  padding_color: [0, 0, 0]   # Padding color if maintaining aspect ratio
+  
+  # Quality preservation
+  anti_aliasing: true        # Apply anti-aliasing during resize
+  preserve_range: true       # Preserve original pixel value range
+
+# Normalization (Applied to all variants)
+normalization:
+  enabled: true
+  method: "zero_one"         # "zero_one", "imagenet", "custom", "per_image"
+  
+  # ImageNet normalization (if method is "imagenet")
+  imagenet:
+    mean: [0.485, 0.456, 0.406]
+    std: [0.229, 0.224, 0.225]
+  
+  # Custom normalization (if method is "custom") 
+  custom:
+    mean: [0.0, 0.0, 0.0]
+    std: [1.0, 1.0, 1.0]
+  
+  # Per-image normalization (if method is "per_image")
+  per_image:
+    method: "z_score"        # "z_score", "min_max"
+    epsilon: 1e-8           # Small constant to avoid division by zero
+
+# Quality Control and Validation
+quality_control:
+  enabled: true
+  
+  # Input image validation
+  input_validation:
+    min_resolution: [224, 224]    # Minimum acceptable input resolution
+    max_resolution: [4096, 4096]  # Maximum acceptable input resolution
+    supported_formats: ["jpg", "jpeg", "png", "tiff", "bmp"]
+    check_corruption: true        # Check for image corruption
+  
+  # Processing validation
+  processing_validation:
+    check_nan_values: true        # Check for NaN values after processing
+    check_inf_values: true        # Check for infinite values
+    validate_range: true          # Validate pixel value ranges
+    expected_range: [0.0, 1.0]    # Expected pixel value range after normalization
+  
+  # Output validation
+  output_validation:
+    verify_dimensions: true       # Verify output dimensions match target
+    verify_channels: true         # Verify RGB channels are present
+    save_validation_report: false # Save detailed validation report
+
+# Ensemble Model Configuration
+ensemble_config:
+  models: ["efficientnet_b4", "xception", "resnet50"]  # List of models in ensemble
+  
+  # Model-specific preprocessing (if different from global settings)
+  model_specific:
+    enabled: false  # Set to true if models need different preprocessing
+    
+    efficientnet_b4:
+      target_resolution: [380, 380]
+      normalization:
+        method: "imagenet"
+        mean: [0.485, 0.456, 0.406]
+        std: [0.229, 0.224, 0.225]
+    
+    xception:
+      target_resolution: [299, 299] 
+      normalization:
+        method: "imagenet"
+        mean: [0.485, 0.456, 0.406]
+        std: [0.229, 0.224, 0.225]
+    
+    resnet50:
+      target_resolution: [224, 224]
+      normalization:
+        method: "imagenet"
+        mean: [0.485, 0.456, 0.406]
+        std: [0.229, 0.224, 0.225]
+
+# Dataset-specific Configuration
+dataset_specific:
+  # APTOS 2019 dataset
+  aptos2019:
+    enabled: false
+    black_border_clipping:
+      method: "adaptive_threshold"
+      gaussian_kernel_size: 13
+    rgb_clahe:
+      clip_limit: 2.5
+    ben_graham:
+      sigma_x: 12  # Slightly different parameters for APTOS
+    target_resolution: [512, 512]
+  
+  # DDR dataset
+  ddr:
+    enabled: false
+    black_border_clipping:
+      method: "contour_detection"
+      blur_kernel: 7
+    lab_clahe:
+      clip_limit: 3.5
+    ben_graham:
+      sigma_x: 8   # Different parameters for DDR
+    target_resolution: [500, 500]
+  
+  # IDRiD dataset
+  idrid:
+    enabled: false
+    ben_graham:
+      sigma_x: 15  # Higher sigma for IDRiD images
+    max_green_gsc:
+      enhancement:
+        clahe:
+          clip_limit: 5.0
+    target_resolution: [500, 500]
+
+# Performance Optimization
+performance:
+  use_gpu_acceleration: true     # Use GPU for OpenCV operations if available
+  batch_processing: false       # Process multiple images in batch (not applicable for single image)
+  memory_efficient: true        # Use memory-efficient processing
+  cache_intermediate: false     # Cache intermediate results
+  parallel_variants: true       # Process image variants in parallel
+  max_workers: 4               # Maximum number of worker threads
+
+# Debugging and Logging
+debug:
+  enabled: true
+  save_intermediate_images: true  # Save each processing step
+  log_processing_time: true       # Log time taken for each step
+  verbose_logging: true          # Detailed logging
+  create_processing_report: true # Create detailed processing report
+  
+  # Intermediate save locations
+  intermediate_paths:
+    black_border_clipped: "./debug/01_black_border_clipped.jpg"
+    rgb_clahe: "./debug/02_rgb_clahe.jpg"
+    ben_graham: "./debug/03_ben_graham.jpg"  # Updated from min_pooling
+    lab_clahe: "./debug/04_lab_clahe.jpg"
+    max_green_gsc: "./debug/05_max_green_gsc.jpg"
+    final_resized: "./debug/06_final_resized/"
+    
+    # Additional debug outputs for new methods
+    max_rgb_filter: "./debug/max_rgb_filter.jpg"
+    avg_rgb_filter: "./debug/avg_rgb_filter.jpg"
+    entropy_analysis: "./debug/entropy_analysis.jpg"

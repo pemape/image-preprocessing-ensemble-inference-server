@@ -1,0 +1,34 @@
+log_level: INFO
+force_cpu: true  # Force CPU usage for lightweight deployment
+voting_strategy: soft  # Choose 'soft' for probability averaging or 'hard' for majority vote
+
+models:
+  # EfficientNetB4 model with Original preprocessing (CPU optimized)
+  - architecture: efficientnetb4
+    dataset: APTOS5
+    preprocessing_variant: original
+    model_path: "c:\\ProgrammingProjects\\python\\dp\\lbcnn_pytorch\\hns\\DR\\Original500x500\\EfficientNetB4\\Nadam\\8\\301_08_2023_07_50_40\\Aptos5_8_EfficientNetB4_opt=Nadam_lr=0.001_best_ckp.pt"
+    num_classes: 5
+    input_size: [500, 500]
+    
+  # Xception model with RGBClahe preprocessing (CPU optimized)
+  - architecture: xception
+    dataset: APTOS5
+    preprocessing_variant: rgb_clahe
+    model_path: "c:\\ProgrammingProjects\\python\\dp\\lbcnn_pytorch\\hns\\DR\\RGBClahe500x500\\Xception\\Nadam\\8\\101_05_2023_18_34_40\\Aptos5_8_Xception_opt=Nadam_lr=0.001_best_ckp.pt"
+    num_classes: 5
+    input_size: [500, 500]
+
+class_names: 
+  - "No DR"
+  - "Mild DR" 
+  - "Moderate DR"
+  - "Severe DR"
+  - "Proliferative DR"
+
+confidence_threshold: 0.5
+
+batch_processing:
+  enabled: false  # Disabled for CPU to reduce memory usage
+  max_batch_size: 1
+  parallel_models: false  # Sequential processing on CPU

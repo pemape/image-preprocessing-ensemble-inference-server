@@ -1,0 +1,177 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug: Preprocess Image",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/fundus_preprocessor.py",
+            "args": [
+                "--config",
+                "configs/preprocessing_config.yaml",
+                "--input",
+                "D:\\FEI STU\\ing\\2roc\\DATABASE\\Aptos\\train_images\\00a8624548a9.png",
+                "--output",
+                "./processed_images"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "python": "C:\\ProgrammingProjects\\python\\virtualenvs\\.datascience\\Scripts\\python.exe",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+                "VIRTUAL_ENV": "C:\\ProgrammingProjects\\python\\virtualenvs\\.datascience",
+                "PATH": "C:\\ProgrammingProjects\\python\\virtualenvs\\.datascience\\Scripts;${env:PATH}"
+            },
+            "stopOnEntry": false,
+            "justMyCode": true,
+            "purpose": [
+                "debug-in-terminal"
+            ],
+        },
+        {
+            "name": "Debug: Preprocess Image (Custom Input)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/fundus_preprocessor.py",
+            "args": [
+                "--config",
+                "configs/preprocessing_config.yaml",
+                "--input",
+                "${input:imageFile}",
+                "--output",
+                "./processed_images",
+                "--debug"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "stopOnEntry": false,
+            "justMyCode": true,
+            "purpose": [
+                "debug-in-terminal"
+            ]
+        },
+        {
+            "name": "Debug: Inference Server",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/fundus_inference_server.py",
+            "args": [
+                "--preprocessing-config",
+                "configs/preprocessing_config.yaml",
+                "--classifier-config",
+                "configs/classifier_config.yaml",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "5000",
+                "--debug",
+                "--log-level",
+                "DEBUG"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+                "FLASK_ENV": "development",
+                "FLASK_DEBUG": "1"
+            },
+            "stopOnEntry": false,
+            "justMyCode": true,
+            "purpose": [
+                "debug-in-terminal"
+            ]
+        },
+        {
+            "name": "Debug: Client Test",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/client.py",
+            "args": [
+                "--server",
+                "http://localhost:5000",
+                "--image",
+                "D:\\FEI STU\\ing\\2roc\\DATABASE\\Aptos\\train_images\\00a8624548a9.png",
+                "--output",
+                "./client_output"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "stopOnEntry": false,
+            "justMyCode": true,
+            "purpose": [
+                "debug-in-terminal"
+            ]
+        },
+        {
+            "name": "Debug: Diabetic Retinopathy Classifier",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/diabetic_retinopathy_classifier.py",
+            "args": [
+                "--config",
+                "configs/classifier_config.yaml",
+                "--input",
+                "./processed_images",
+                "--output",
+                "./classification_output"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+                "CUDA_VISIBLE_DEVICES": "0"
+            },
+            "stopOnEntry": false,
+            "justMyCode": true,
+            "purpose": [
+                "debug-in-terminal"
+            ]
+        },
+        {
+            "name": "Debug: Batch Preprocessing",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/fundus_preprocessor.py",
+            "args": [
+                "--config",
+                "configs/preprocessing_config.yaml",
+                "--input",
+                "${input:batchDirectory}",
+                "--output",
+                "./batch_output",
+                "--batch",
+                "--debug"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "stopOnEntry": false,
+            "justMyCode": true,
+            "purpose": [
+                "debug-in-terminal"
+            ]
+        }
+    ],
+    "inputs": [
+        {
+            "id": "imageFile",
+            "description": "Path to the image file to process",
+            "default": "D:\\FEI STU\\ing\\2roc\\DATABASE\\Aptos\\train_images\\00a8624548a9.png",
+            "type": "promptString"
+        },
+        {
+            "id": "batchDirectory",
+            "description": "Path to the directory containing images to batch process",
+            "default": "D:\\FEI STU\\ing\\2roc\\DATABASE\\Aptos\\train_images\\",
+            "type": "promptString"
+        }
+    ]
+}
