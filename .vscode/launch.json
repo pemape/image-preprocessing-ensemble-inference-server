@@ -10,9 +10,33 @@
                 "--config",
                 "configs/preprocessing_config.yaml",
                 "--input",
-                "D:\\FEI STU\\ing\\2roc\\DATABASE\\Aptos\\train_images\\00a8624548a9.png",
-                "--output",
-                "./processed_images"
+                "${workspaceFolder}/test-images/00a8624548a9.png",
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "python": "C:\\ProgrammingProjects\\python\\virtualenvs\\.datascience\\Scripts\\python.exe",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+                "VIRTUAL_ENV": "C:\\ProgrammingProjects\\python\\virtualenvs\\.datascience",
+                "PATH": "C:\\ProgrammingProjects\\python\\virtualenvs\\.datascience\\Scripts;${env:PATH}"
+            },
+            "stopOnEntry": false,
+            "justMyCode": true,
+            "purpose": [
+                "debug-in-terminal"
+            ],
+        },
+        {
+            "name": "Debug: Preprocess Image Batch",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/fundus_preprocessor.py",
+            "args": [
+                "--config",
+                "configs/preprocessing_config.yaml",
+                "--input",
+                "${workspaceFolder}/test-images/",
+                "--batch",
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",

@@ -14,8 +14,8 @@ LOG_LEVEL = INFO
 
 # Preprocessing specific variables
 PREPROCESS_CONFIG = configs\preprocessing_config.yaml
-PREPROCESS_INPUT = "D:\FEI STU\ing\2roc\DATABASE\Aptos\train_images\00a8624548a9.png"
-PREPROCESS_OUTPUT = ./processed_images  # Changed to match config default
+PREPROCESS_INPUT = "./test-images/007-2809-100.jpg"
+PREPROCESS_OUTPUT = final_resized_processed_images  # Changed to match config default
 
 .PHONY: help install install-dev setup check test server client demo clean format lint docs preprocess preprocess-debug
 

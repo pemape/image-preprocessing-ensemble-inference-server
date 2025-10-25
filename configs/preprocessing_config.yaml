@@ -14,11 +14,11 @@ general:
 # Black Border Clipping Algorithm (Applied First)
 black_border_clipping:
   enabled: true
-  method: "fixed_threshold" # "fixed_threshold", "adaptive_threshold", "contour_detection", "morphological"
+  method: "contour_detection" # "fixed_threshold", "adaptive_threshold", "contour_detection", "morphological"
 
   # Fixed threshold parameters (simple approach)
   fixed_threshold:
-    default_tolerance: 18 # Fixed tolerance value for all images
+    default_tolerance: 30 # Fixed tolerance value for all images
     bright_border_tolerance: 249 # Special tolerance for bright borders (pixel > 200)
     bright_border_threshold: 200 # Threshold to detect bright borders
     use_grayscale_conversion: true # Convert RGB to grayscale first
@@ -33,7 +33,7 @@ black_border_clipping:
   # Contour detection parameters
   contour_detection:
     blur_kernel: 5 # Gaussian blur kernel size
-    threshold_value: 10 # Binary threshold value
+    threshold_value: 30 # Binary threshold value
     min_contour_area: 1000 # Minimum contour area to consider
 
   # Morphological operations

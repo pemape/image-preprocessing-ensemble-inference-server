@@ -91,8 +91,7 @@ class FundusPreprocessor:
         """Create necessary output directories."""
         # Only create debug directories if debug is BOTH enabled AND save_intermediate_images is true
         debug_config = self.config.get('debug', {})
-        debug_fully_enabled = (debug_config.get('enabled', False) and
-                              debug_config.get('save_intermediate_images', False))
+        debug_fully_enabled = (debug_config.get('enabled', False))
 
         if debug_fully_enabled:
             debug_paths = debug_config.get('intermediate_paths', {})
@@ -101,7 +100,7 @@ class FundusPreprocessor:
                 os.makedirs(path_value, exist_ok=True)
             self.logger.debug("Created debug directories")
         else:
-            self.logger.debug(f"Debug directories skipped - enabled: {debug_config.get('enabled', False)}, save_intermediate: {debug_config.get('save_intermediate_images', False)}")
+            self.logger.debug(f"Debug directories skipped - enabled: {debug_config.get('enabled', False)}")
 
         # Only create main output directory if NOT in debug mode or if explicitly needed
         output_dir = self.config.get('general', {}).get('output_directory')
@@ -137,7 +136,7 @@ class FundusPreprocessor:
         # Step 2: Black border clipping
         clipped_image = self._clip_black_borders(rgb_image)
 
-        if self.config.get('debug', {}).get('save_intermediate_images', False):
+        if self.config.get('debug', {}).get('enabled', False):
             self._save_debug_image(clipped_image, 'black_border_clipped', image_id)
 
         # Step 3: Generate 5 image variants
@@ -154,8 +153,11 @@ class FundusPreprocessor:
             processed = self._final_processing(variant_image, variant_name)
             final_variants[variant_name] = processed
 
-            # Save final processed variants if debug is enabled
-            if self.config.get('debug', {}).get('save_intermediate_images', False):
+            # Save final processed variants - always save if output directory is configured
+            output_dir = self.config.get('general', {}).get('output_directory')
+            debug_enabled = self.config.get('debug', {}).get('enabled', False)
+
+            if debug_enabled or output_dir:
                 self._save_final_variant(processed, variant_name, image_id)
 
         processing_time = time.time() - start_time
@@ -212,9 +214,9 @@ class FundusPreprocessor:
         original_area = image.shape[0] * image.shape[1]
         results = {}
         debug_config = self.config.get('debug', {})
-        debug_enabled = (debug_config.get('enabled', False) and
-                        debug_config.get('save_intermediate_images', False))
+        debug_enabled = (debug_config.get('enabled', False))
 
+        debug_intermediate_paths = debug_config.get('save_intermediate_images', False)
         # Get the main method from config
         main_method = self.config.get('black_border_clipping', {}).get('method', 'fixed_threshold')
 
@@ -240,7 +242,7 @@ class FundusPreprocessor:
                     self.logger.debug(f"{method} method: crop ratio = {crop_ratio:.3f}")
 
                     # Save debug image for this method (always save all methods in debug mode)
-                    if debug_enabled:
+                    if debug_enabled and debug_intermediate_paths:
                         self._save_border_clipping_debug_image(result_image, method, crop_ratio)
                 else:
                     self.logger.warning(f"{method} method: crop ratio {crop_ratio:.3f} below minimum threshold")
@@ -250,7 +252,7 @@ class FundusPreprocessor:
 
             except Exception as e:
                 self.logger.warning(f"{method} method failed: {e}")
-                if debug_enabled:
+                if debug_enabled and debug_intermediate_paths:
                     # Save original image as fallback for failed method
                     self._save_border_clipping_debug_image(image, f"{method}_error", 0.0)
 
@@ -319,9 +321,9 @@ class FundusPreprocessor:
 
     def _create_border_clipping_comparison_report(self, results: dict, selected_method: str, main_method: str, image_id: str = None):
         """Create a detailed comparison report of all border clipping methods."""
-        # Check BOTH debug.enabled AND save_intermediate_images
+        # Check BOTH debug.enabled
         debug_config = self.config.get('debug', {})
-        if not (debug_config.get('enabled', False) and debug_config.get('save_intermediate_images', False)):
+        if not (debug_config.get('enabled', False)):
             return
 
         debug_paths = debug_config.get('intermediate_paths', {})
@@ -397,8 +399,8 @@ class FundusPreprocessor:
         _, binary = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)
 
         # Morphological operations
-        kernel_size = config.get('kernel_size', 5)
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+        kernel_size = config.get('kernel_size', (5, 5))
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size[0], kernel_size[1]))
 
         # Opening to remove noise
         opening = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
@@ -439,7 +441,7 @@ class FundusPreprocessor:
         blurred = cv2.GaussianBlur(gray, (blur_kernel, blur_kernel), 0)
 
         # Apply threshold
-        threshold = config.get('threshold', 15)
+        threshold = config.get('threshold_value', 15)
         _, binary = cv2.threshold(blurred, threshold, 255, cv2.THRESH_BINARY)
 
         # Find contours
@@ -512,33 +514,100 @@ class FundusPreprocessor:
         return image[y:y+h, x:x+w]
 
     def _clip_fixed_threshold_direct(self, image: np.ndarray) -> np.ndarray:
-        """Apply fixed thresholding to detect fundus region."""
+        """
+        Apply fixed thresholding to detect fundus region using tolerance-based border detection.
+        This method implements sophisticated border detection with different tolerances for
+        dark borders and bright borders (common in some fundus datasets).
+        """
         config = self.config.get('black_border_clipping', {}).get('fixed_threshold', {})
 
-        # Convert to grayscale
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        # Get tolerance parameters
+        default_tolerance = config.get('default_tolerance', 25)
+        bright_border_tolerance = config.get('bright_border_tolerance', 249)
+        bright_border_threshold = config.get('bright_border_threshold', 200)
+        use_grayscale = config.get('use_grayscale_conversion', True)
 
-        # Apply fixed threshold
-        threshold = config.get('threshold', 20)
-        _, binary = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)
+        self.logger.debug(f"Fixed threshold params: default_tolerance={default_tolerance}, "
+                         f"bright_border_tolerance={bright_border_tolerance}, "
+                         f"bright_border_threshold={bright_border_threshold}, "
+                         f"use_grayscale={use_grayscale}")
 
-        # Find non-zero pixels
-        coords = cv2.findNonZero(binary)
+        # Step 1: Prepare image for processing
+        if use_grayscale:
+            # Convert to grayscale for border detection
+            if len(image.shape) == 3:
+                gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+            else:
+                gray = image.copy()
+        else:
+            # Use original image (assuming it's already grayscale or we want to work with RGB)
+            gray = image.copy()
+
+        # Step 2: Create binary mask based on tolerance thresholds
+        mask = np.zeros(gray.shape, dtype=np.uint8)
+
+        if use_grayscale and len(image.shape) == 3:
+            # Working with grayscale version of RGB image
+
+            # Detect bright borders (pixels > bright_border_threshold get high tolerance)
+            bright_border_mask = gray > bright_border_threshold
+
+            # Apply different tolerances
+            # For bright borders: use bright_border_tolerance
+            mask[bright_border_mask] = (gray[bright_border_mask] < bright_border_tolerance).astype(np.uint8) * 255
+
+            # For normal/dark areas: use default_tolerance
+            normal_mask = ~bright_border_mask
+            mask[normal_mask] = (gray[normal_mask] > default_tolerance).astype(np.uint8) * 255
+
+        else:
+            # Simple thresholding fallback
+            _, mask = cv2.threshold(gray, default_tolerance, 255, cv2.THRESH_BINARY)
+
+        # Step 3: Find the region of interest from the binary mask
+        # Find non-zero pixels (the fundus region)
+        coords = cv2.findNonZero(mask)
 
         if coords is None:
+            self.logger.warning("Fixed threshold: No valid region found, returning original image")
             return image
 
-        # Get bounding rectangle
+        # Get bounding rectangle of the fundus region
         x, y, w, h = cv2.boundingRect(coords)
 
-        # Apply margin
-        margin = config.get('margin', 5)
-        x = max(0, x - margin)
-        y = max(0, y - margin)
-        w = min(image.shape[1] - x, w + 2 * margin)
-        h = min(image.shape[0] - y, h + 2 * margin)
+        # Step 4: Apply padding/margin
+        padding_percent = self.config.get('black_border_clipping', {}).get('padding_percent', 0.02)
 
-        return image[y:y+h, x:x+w]
+        # Calculate margin based on image size or use fixed margin
+        if padding_percent > 0:
+            margin_x = int(image.shape[1] * padding_percent)
+            margin_y = int(image.shape[0] * padding_percent)
+        else:
+            margin_x = margin_y = config.get('margin', 5)
+
+        # Apply margins with bounds checking
+        x = max(0, x - margin_x)
+        y = max(0, y - margin_y)
+        w = min(image.shape[1] - x, w + 2 * margin_x)
+        h = min(image.shape[0] - y, h + 2 * margin_y)
+
+        # Step 5: Validate crop ratio
+        original_area = image.shape[0] * image.shape[1]
+        crop_area = w * h
+        crop_ratio = crop_area / original_area
+        min_crop_ratio = self.config.get('black_border_clipping', {}).get('min_crop_ratio', 0.3)
+
+        if crop_ratio < min_crop_ratio:
+            self.logger.warning(f"Fixed threshold: Crop ratio {crop_ratio:.3f} below minimum {min_crop_ratio}, returning original")
+            return image
+
+        # Step 6: Return cropped image
+        cropped = image[y:y+h, x:x+w]
+
+        self.logger.debug(f"Fixed threshold: Successfully cropped from {image.shape[:2]} to {cropped.shape[:2]} "
+                         f"(ratio: {crop_ratio:.3f})")
+
+        return cropped
 
     def _process_variants_parallel(self, clipped_image: np.ndarray, image_id: str) -> Dict[str, np.ndarray]:
         """Process all image variants in parallel."""
@@ -561,7 +630,7 @@ class FundusPreprocessor:
                     result = future.result()
                     variants[variant_name] = result
                     self.logger.debug(f"Completed {variant_name} variant")
-                    if self.config.get('debug', {}).get('save_intermediate_images', False):
+                    if self.config.get('debug', {}).get('enabled', False):
                         self._save_debug_image(result, variant_name, image_id)
                 except Exception as e:
                     self.logger.error(f"Failed to process {variant_name} variant: {e}")
@@ -576,7 +645,7 @@ class FundusPreprocessor:
 
         try:
             variants['original'] = self._create_original_variant(clipped_image)
-            if self.config.get('debug', {}).get('save_intermediate_images', False):
+            if self.config.get('debug', {}).get('enabled', False):
                 self._save_debug_image(variants['original'], 'original', image_id)
         except Exception as e:
             self.logger.error(f"Failed to create original variant: {e}")
@@ -584,7 +653,7 @@ class FundusPreprocessor:
 
         try:
             variants['rgb_clahe'] = self._create_rgb_clahe_variant(clipped_image)
-            if self.config.get('debug', {}).get('save_intermediate_images', False):
+            if self.config.get('debug', {}).get('enabled', False):
                 self._save_debug_image(variants['rgb_clahe'], 'rgb_clahe', image_id)
         except Exception as e:
             self.logger.error(f"Failed to create RGB-CLAHE variant: {e}")
@@ -592,7 +661,7 @@ class FundusPreprocessor:
 
         try:
             variants['min_pooling'] = self._create_min_pooling_variant(clipped_image)
-            if self.config.get('debug', {}).get('save_intermediate_images', False):
+            if self.config.get('debug', {}).get('enabled', False):
                 self._save_debug_image(variants['min_pooling'], 'min_pooling', image_id)
         except Exception as e:
             self.logger.error(f"Failed to create min-pooling variant: {e}")
@@ -600,7 +669,7 @@ class FundusPreprocessor:
 
         try:
             variants['lab_clahe'] = self._create_lab_clahe_variant(clipped_image)
-            if self.config.get('debug', {}).get('save_intermediate_images', False):
+            if self.config.get('debug', {}).get('enabled', False):
                 self._save_debug_image(variants['lab_clahe'], 'lab_clahe', image_id)
         except Exception as e:
             self.logger.error(f"Failed to create Lab-CLAHE variant: {e}")
@@ -608,7 +677,7 @@ class FundusPreprocessor:
 
         try:
             variants['max_green_gsc'] = self._create_max_green_gsc_variant(clipped_image)
-            if self.config.get('debug', {}).get('save_intermediate_images', False):
+            if self.config.get('debug', {}).get('enabled', False):
                 self._save_debug_image(variants['max_green_gsc'], 'max_green_gsc', image_id)
         except Exception as e:
             self.logger.error(f"Failed to create MaxGreenGsc variant: {e}")
@@ -845,9 +914,9 @@ class FundusPreprocessor:
 
     def _save_debug_image(self, image: np.ndarray, stage_name: str, image_id: str):
         """Save intermediate images for debugging."""
-        # Check BOTH debug.enabled AND save_intermediate_images
+        # Check BOTH debug.enabled
         debug_config = self.config.get('debug', {})
-        if not (debug_config.get('enabled', False) and debug_config.get('save_intermediate_images', False)):
+        if not (debug_config.get('enabled', False)):
             return
 
         debug_paths = debug_config.get('intermediate_paths', {})
@@ -879,8 +948,7 @@ class FundusPreprocessor:
     def _save_final_variant(self, image: np.ndarray, variant_name: str, image_id: str):
         """Save final processed variants efficiently - avoid duplication."""
         debug_config = self.config.get('debug', {})
-        debug_enabled = (debug_config.get('enabled', False) and
-                        debug_config.get('save_intermediate_images', False))
+        debug_enabled = (debug_config.get('enabled', False))
 
         # Get configured output directory - no fallback to avoid unwanted folder creation
         output_dir = self.config.get('general', {}).get('output_directory')
@@ -1003,7 +1071,10 @@ def create_default_config(output_path: str):
                 'margin': 8
             },
             'fixed_threshold': {
-                'threshold': 20,
+                'default_tolerance': 25,
+                'bright_border_tolerance': 249,
+                'bright_border_threshold': 200,
+                'use_grayscale_conversion': True,
                 'margin': 5
             }
         },
@@ -1247,35 +1318,16 @@ if __name__ == "__main__":
                 # Normal mode: save results to specified output directory
                 output_dir = args.output or preprocessor.config.get('general', {}).get('output_directory')
 
-                if not output_dir:
-                    print("Error: No output directory specified in args or config")
-                    exit(1)
-
-                os.makedirs(output_dir, exist_ok=True)
-
-                for variant_name, variant_image in results.items():
-                    # Convert to BGR for saving
-                    if variant_image.dtype == np.float32:
-                        save_image = (variant_image * 255).astype(np.uint8)
-                    else:
-                        save_image = variant_image
-
-                    if len(save_image.shape) == 3:
-                        save_image_bgr = cv2.cvtColor(save_image, cv2.COLOR_RGB2BGR)
-                    else:
-                        save_image_bgr = save_image
-
-                    output_path = os.path.join(output_dir, f"{Path(args.input).stem}_{variant_name}.jpg")
-                    cv2.imwrite(output_path, save_image_bgr)
-                    print(f"Saved {variant_name} variant to: {output_path}")
-
                 print(f"\n✅ Processing completed!")
                 print(f"📁 Output directory: {output_dir}")
             else:
                 # Debug mode: files already saved by preprocessor to debug folders
+                debug_paths = preprocessor.config.get('debug', {}).get('intermediate_paths', {})
+                final_resized_path = debug_paths.get('final_resized', './debug/07_final_resized/')
+
                 print(f"\n✅ Processing completed!")
                 print(f"🔍 Debug mode: All files saved to debug folders")
-                print(f"📁 Final variants: ./debug/07_final_resized/")
+                print(f"📁 Final variants: {final_resized_path}")
                 print(f"📁 Intermediate images: ./debug/[01-06]_*/")
 
             if debug_enabled:
