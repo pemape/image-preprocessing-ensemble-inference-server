@@ -67,15 +67,16 @@
                 "--port",
                 "5000",
                 "--debug",
-                "--log-level",
-                "DEBUG"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
+            "python": "C:\\ProgrammingProjects\\python\\virtualenvs\\.datascience\\Scripts\\python.exe",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}",
                 "FLASK_ENV": "development",
-                "FLASK_DEBUG": "1"
+                "FLASK_DEBUG": "1",
+                "VIRTUAL_ENV": "C:\\ProgrammingProjects\\python\\virtualenvs\\.datascience",
+                "PATH": "C:\\ProgrammingProjects\\python\\virtualenvs\\.datascience\\Scripts;${env:PATH}"
             },
             "stopOnEntry": false,
             "justMyCode": true,

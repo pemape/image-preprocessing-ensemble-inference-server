@@ -29,49 +29,51 @@ except ImportError:
 
 class XceptionModel(nn.Module):
     """Xception model for diabetic retinopathy classification."""
-    
+
     def __init__(self, num_classes: int = 5, pretrained: bool = True):
         super(XceptionModel, self).__init__()
-        
+
         if not XCEPTION_AVAILABLE:
             raise ImportError("pretrainedmodels required for Xception. Install with: pip install pretrainedmodels")
-        
+
         # Load pretrained Xception
         if pretrained:
             self.xception = pretrainedmodels.__dict__['xception'](pretrained='imagenet')
         else:
             self.xception = pretrainedmodels.__dict__['xception'](pretrained=None)
-        
+
         # Replace the final classifier
         self.xception.last_linear = nn.Linear(self.xception.last_linear.in_features, num_classes)
-    
+
     def forward(self, x):
         return self.xception(x)
 
 
 class EfficientNetB4Model(nn.Module):
     """EfficientNetB4 model for diabetic retinopathy classification."""
-    
+
     def __init__(self, num_classes: int = 5, pretrained: bool = True):
         super(EfficientNetB4Model, self).__init__()
-        
+
         # Load pretrained EfficientNetB4
-        self.efficientnet = efficientnet_b4(pretrained=pretrained)
-        
+        self.efficientnet = efficientnet_b4()
+
+        # num_ftrs = model.classifier[1].in_features
+
         # Replace the final classifier
-        self.efficientnet.classifier = nn.Linear(self.efficientnet.classifier.in_features, num_classes)
-    
+        self.efficientnet.classifier = nn.Linear(self.efficientnet.classifier[1].in_features, num_classes)
+
     def forward(self, x):
         return self.efficientnet(x)
 
 
 class ModelEnsemble:
     """Ensemble of multiple models with voting strategies."""
-    
+
     def __init__(self, models: List[Dict], device: torch.device, voting_strategy: str = 'soft'):
         """
         Initialize model ensemble.
-        
+
         Args:
             models: List of model configurations
             device: Torch device
@@ -81,7 +83,7 @@ class ModelEnsemble:
         self.device = device
         self.voting_strategy = voting_strategy
         self.logger = logging.getLogger(self.__class__.__name__)
-        
+
         for model_config in models:
             model = self._load_model(model_config)
             if model is not None:
@@ -89,16 +91,16 @@ class ModelEnsemble:
                     'model': model,
                     'config': model_config
                 })
-        
+
         self.logger.info(f"Loaded {len(self.models)} models for ensemble")
-    
+
     def _load_model(self, config: Dict) -> Optional[nn.Module]:
         """Load a single model from configuration."""
         try:
             architecture = config['architecture'].lower()
             model_path = config['model_path']
             num_classes = config.get('num_classes', 5)
-            
+
             # Create model
             if architecture == 'xception':
                 if not XCEPTION_AVAILABLE:
@@ -110,11 +112,11 @@ class ModelEnsemble:
             else:
                 self.logger.error(f"Unknown architecture: {architecture}")
                 return None
-            
+
             # Load weights
             if Path(model_path).exists():
                 checkpoint = torch.load(model_path, map_location=self.device)
-                
+
                 # Handle different checkpoint formats
                 if 'model_state_dict' in checkpoint:
                     model.load_state_dict(checkpoint['model_state_dict'])
@@ -122,67 +124,67 @@ class ModelEnsemble:
                     model.load_state_dict(checkpoint['state_dict'])
                 else:
                     model.load_state_dict(checkpoint)
-                
+
                 model.to(self.device)
                 model.eval()
-                
+
                 self.logger.info(f"Loaded model: {architecture} from {model_path}")
                 return model
             else:
                 self.logger.error(f"Model file not found: {model_path}")
                 return None
-                
+
         except Exception as e:
             self.logger.error(f"Failed to load model {config.get('model_path', 'unknown')}: {e}")
             return None
-    
+
     def predict(self, images: Dict[str, np.ndarray]) -> Dict[str, float]:
         """
         Predict using ensemble of models.
-        
+
         Args:
             images: Dictionary of preprocessed image variants
-            
+
         Returns:
             Dictionary with class probabilities
         """
         if not self.models:
             raise ValueError("No models loaded in ensemble")
-        
+
         all_predictions = []
-        
+
         for model_info in self.models:
             model = model_info['model']
             config = model_info['config']
-            
+
             # Get the appropriate preprocessing variant for this model
             preprocessing_variant = config.get('preprocessing_variant', 'original')
-            
+
             if preprocessing_variant not in images:
                 self.logger.warning(f"Preprocessing variant '{preprocessing_variant}' not found, using 'original'")
                 preprocessing_variant = 'original'
-            
+
             if preprocessing_variant not in images:
                 self.logger.error("No suitable image variant found for prediction")
                 continue
-            
+
             try:
                 # Prepare image for this model
                 image = images[preprocessing_variant]
                 input_tensor = self._prepare_input(image, config)
-                
+
                 # Get prediction
                 with torch.no_grad():
                     logits = model(input_tensor)
                     probabilities = F.softmax(logits, dim=1)
                     all_predictions.append(probabilities.cpu().numpy()[0])
-                    
+
             except Exception as e:
                 self.logger.error(f"Prediction failed for model {config.get('model_path', 'unknown')}: {e}")
-        
+
         if not all_predictions:
             raise ValueError("No successful predictions from ensemble")
-        
+
         # Ensemble voting
         if self.voting_strategy == 'soft':
             # Average probabilities
@@ -195,67 +197,67 @@ class ModelEnsemble:
             ensemble_probs[ensemble_pred] = 1.0
         else:
             raise ValueError(f"Unknown voting strategy: {self.voting_strategy}")
-        
+
         # Convert to class probabilities dictionary
         class_names = ['No DR', 'Mild DR', 'Moderate DR', 'Severe DR', 'Proliferative DR']
         result = {
             class_names[i]: float(prob) for i, prob in enumerate(ensemble_probs)
         }
-        
+
         # Add prediction metadata
         result['predicted_class'] = class_names[np.argmax(ensemble_probs)]
         result['confidence'] = float(np.max(ensemble_probs))
         result['ensemble_size'] = len(all_predictions)
         result['voting_strategy'] = self.voting_strategy
-        
+
         return result
-    
+
     def _prepare_input(self, image: np.ndarray, config: Dict) -> torch.Tensor:
         """Prepare input tensor for model."""
         # Image should already be preprocessed, just need to convert to tensor
         target_size = config.get('input_size', (500, 500))
-        
+
         # Ensure image is in correct format
         if image.dtype != np.uint8:
             if image.max() <= 1.0:
                 image = (image * 255).astype(np.uint8)
             else:
                 image = image.astype(np.uint8)
-        
+
         # Resize if needed
         if image.shape[:2] != target_size:
             image = cv2.resize(image, target_size)
-        
+
         # Convert to tensor and normalize
         transform = transforms.Compose([
             transforms.ToPILImage(),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
-        
+
         tensor = transform(image).unsqueeze(0).to(self.device)
         return tensor
 
 
 class DiabeticRetinopathyClassifier:
     """Main classifier class that combines preprocessing and classification."""
-    
+
     def __init__(self, config_path: str):
         """
         Initialize the classifier.
-        
+
         Args:
             config_path: Path to the classifier configuration file
         """
         self.config = self._load_config(config_path)
         self.logger = self._setup_logging()
         self.device = self._setup_device()
-        
+
         # Initialize model ensemble
         self.ensemble = self._create_ensemble()
-        
+
         self.logger.info("DiabeticRetinopathyClassifier initialized successfully")
-    
+
     def _load_config(self, config_path: str) -> dict:
         """Load classifier configuration."""
         with open(config_path, 'r') as f:
@@ -264,16 +266,16 @@ class DiabeticRetinopathyClassifier:
             else:
                 import yaml
                 return yaml.safe_load(f)
-    
+
     def _setup_logging(self) -> logging.Logger:
         """Setup logging."""
         logger = logging.getLogger(self.__class__.__name__)
-        
+
         level = getattr(logging, self.config.get('log_level', 'INFO').upper())
         logging.basicConfig(level=level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        
+
         return logger
-    
+
     def _setup_device(self) -> torch.device:
         """Setup compute device."""
         if self.config.get('force_cpu', False):
@@ -282,33 +284,33 @@ class DiabeticRetinopathyClassifier:
             device = torch.device('cuda')
         else:
             device = torch.device('cpu')
-        
+
         self.logger.info(f"Using device: {device}")
         return device
-    
+
     def _create_ensemble(self) -> ModelEnsemble:
         """Create model ensemble from configuration."""
         models_config = self.config.get('models', [])
         voting_strategy = self.config.get('voting_strategy', 'soft')
-        
+
         if not models_config:
             raise ValueError("No models configured")
-        
+
         return ModelEnsemble(models_config, self.device, voting_strategy)
-    
+
     def classify(self, preprocessed_images: Dict[str, np.ndarray]) -> Dict:
         """
         Classify diabetic retinopathy from preprocessed images.
-        
+
         Args:
             preprocessed_images: Dictionary of preprocessed image variants
-            
+
         Returns:
             Classification results with probabilities and metadata
         """
         try:
             results = self.ensemble.predict(preprocessed_images)
-            
+
             # Add additional metadata
             results['model_info'] = {
                 'ensemble_size': len(self.ensemble.models),
@@ -316,17 +318,17 @@ class DiabeticRetinopathyClassifier:
                 'datasets': list(set([m['config'].get('dataset', 'unknown') for m in self.ensemble.models])),
                 'voting_strategy': self.ensemble.voting_strategy
             }
-            
+
             return results
-            
+
         except Exception as e:
             self.logger.error(f"Classification failed: {e}")
             raise
-    
+
     def get_model_info(self) -> Dict:
         """Get information about loaded models."""
         model_info = []
-        
+
         for model_data in self.ensemble.models:
             config = model_data['config']
             info = {
@@ -337,7 +339,7 @@ class DiabeticRetinopathyClassifier:
                 'num_classes': config.get('num_classes', 5)
             }
             model_info.append(info)
-        
+
         return {
             'models': model_info,
             'voting_strategy': self.ensemble.voting_strategy,
@@ -348,20 +350,20 @@ class DiabeticRetinopathyClassifier:
 
 def create_default_classifier_config(output_path: str, model_base_path: str):
     """Create a default classifier configuration file."""
-    
+
     # Auto-discover models
     models = []
     base_path = Path(model_base_path)
-    
+
     # Look for .pt files
     for model_file in base_path.rglob("*.pt"):
         path_parts = model_file.parts
-        
+
         # Extract information from path structure
         architecture = None
         dataset = None
         preprocessing = None
-        
+
         for part in path_parts:
             if part.lower() in ['xception', 'efficientnetb4']:
                 architecture = part
@@ -371,7 +373,7 @@ def create_default_classifier_config(output_path: str, model_base_path: str):
                 preprocessing = 'original'
             elif 'rgbclahe' in part.lower():
                 preprocessing = 'rgb_clahe'
-        
+
         if architecture and dataset:
             model_config = {
                 'architecture': architecture,
@@ -382,7 +384,7 @@ def create_default_classifier_config(output_path: str, model_base_path: str):
                 'input_size': [500, 500]
             }
             models.append(model_config)
-    
+
     config = {
         'log_level': 'INFO',
         'force_cpu': False,
@@ -396,14 +398,14 @@ def create_default_classifier_config(output_path: str, model_base_path: str):
             'parallel_models': True
         }
     }
-    
+
     with open(output_path, 'w') as f:
         if output_path.endswith('.json'):
             json.dump(config, f, indent=2)
         else:
             import yaml
             yaml.dump(config, f, default_flow_style=False, indent=2)
-    
+
     print(f"Classifier configuration created: {output_path}")
     print(f"Found {len(models)} model files")
     return config
@@ -412,15 +414,15 @@ def create_default_classifier_config(output_path: str, model_base_path: str):
 if __name__ == "__main__":
     # Example usage
     import argparse
-    
+
     parser = argparse.ArgumentParser(description='Diabetic Retinopathy Classifier')
     parser.add_argument('--create-config', type=str, help='Create classifier configuration')
     parser.add_argument('--model-path', type=str, help='Base path for model discovery')
     parser.add_argument('--config', type=str, help='Classifier configuration file')
     parser.add_argument('--test', action='store_true', help='Test classifier')
-    
+
     args = parser.parse_args()
-    
+
     if args.create_config and args.model_path:
         create_default_classifier_config(args.create_config, args.model_path)
     elif args.config and args.test:
