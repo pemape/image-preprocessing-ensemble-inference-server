@@ -282,6 +282,98 @@ result = response.json()
 variants = result['processed_variants']
 ```
 
+#### API Endpoints
+
+The inference server provides several REST API endpoints:
+
+**Health & Information:**
+- `GET /health` - Health check and uptime
+- `GET /info` - Server information and available endpoints
+- `GET /stats` - Server statistics (requests, errors, etc.)
+- `GET /config` - Configuration details
+- `GET /models` - Model information (architectures, datasets, etc.)
+
+**Processing Endpoints:**
+- `POST /preprocess` - Preprocess image only (returns 5 variants)
+- `POST /classify` - Classify from preprocessed images
+- `POST /process` - Full pipeline (preprocess + classify)
+- `POST /batch/preprocess` - Batch preprocessing
+- `POST /batch/process` - Batch full processing
+
+#### Voting Strategy Query Parameter
+
+The classification endpoints (`/classify` and `/process`) support dynamic voting strategy selection via query parameter:
+
+**Soft Voting (Default)** - Averages prediction probabilities:
+```bash
+curl -X POST "http://localhost:5000/process?voting_strategy=soft" \
+  -F "image=@fundus_image.jpg"
+```
+
+```python
+# Using requests library
+files = {'image': open('fundus_image.jpg', 'rb')}
+response = requests.post(
+    'http://localhost:5000/process?voting_strategy=soft',
+    files=files
+)
+```
+
+**Hard Voting** - Majority vote from predictions:
+```bash
+curl -X POST "http://localhost:5000/process?voting_strategy=hard" \
+  -F "image=@fundus_image.jpg"
+```
+
+```python
+# Using requests library
+files = {'image': open('fundus_image.jpg', 'rb')}
+response = requests.post(
+    'http://localhost:5000/process?voting_strategy=hard',
+    files=files
+)
+```
+
+**Response includes voting strategy used:**
+```json
+{
+  "status": "success",
+  "prediction": {
+    "No DR": 0.85,
+    "Mild DR": 0.10,
+    "Moderate DR": 0.03,
+    "Severe DR": 0.01,
+    "Proliferative DR": 0.01,
+    "predicted_class": "No DR",
+    "confidence": 0.85,
+    "ensemble_size": 5,
+    "voting_strategy": "soft"
+  },
+  "processing_times": {
+    "preprocessing_seconds": 2.3,
+    "classification_seconds": 1.5,
+    "total_seconds": 3.8
+  }
+}
+```
+
+**Valid Values:**
+- `soft` - Probability averaging (recommended for balanced results)
+- `hard` - Majority voting (more decisive predictions)
+
+If no query parameter is provided, the default value from `classifier_config.yaml` is used.
+
+**Error Handling:**
+```python
+# Invalid voting strategy
+response = requests.post(
+    'http://localhost:5000/process?voting_strategy=invalid',
+    files=files
+)
+# Returns 400 Bad Request:
+# {"error": "Invalid voting_strategy 'invalid'. Must be 'soft' or 'hard'"}
+```
+
 ## Advanced Configuration
 
 ### Ensemble Model Integration
@@ -506,3 +598,4 @@ If you use this preprocessing pipeline in your research, please cite the origina
 ## License
 
 This preprocessing configuration system is part of the LBCNN PyTorch project. Please refer to the main project license for usage terms.
+````

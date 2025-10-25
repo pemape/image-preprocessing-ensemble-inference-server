@@ -284,23 +284,47 @@ class FundusInferenceServer:
             if not self.classifier:
                 return jsonify({"error": "Classification module not available"}), 400
 
+            # Get voting strategy from query parameter (default to config value)
+            voting_strategy = request.args.get(
+                "voting_strategy", self.classifier.ensemble.voting_strategy
+            )
+
+            # Validate voting strategy
+            if voting_strategy not in ["soft", "hard"]:
+                return (
+                    jsonify(
+                        {
+                            "error": f"Invalid voting_strategy '{voting_strategy}'. Must be 'soft' or 'hard'"
+                        }
+                    ),
+                    400,
+                )
+
             # Get preprocessed images from request
             preprocessed_images = self._get_preprocessed_images_from_request(request)
             if not preprocessed_images:
                 return jsonify({"error": "No valid preprocessed images provided"}), 400
 
-            # Classify
-            start_time = time.time()
-            results = self.classifier.classify(preprocessed_images)
-            classification_time = time.time() - start_time
+            # Temporarily set voting strategy if different from default
+            original_strategy = self.classifier.ensemble.voting_strategy
+            self.classifier.ensemble.voting_strategy = voting_strategy
 
-            response = {
-                "status": "success",
-                "classification_time_seconds": classification_time,
-                "prediction": results,
-            }
+            try:
+                # Classify
+                start_time = time.time()
+                results = self.classifier.classify(preprocessed_images)
+                classification_time = time.time() - start_time
 
-            return jsonify(response)
+                response = {
+                    "status": "success",
+                    "classification_time_seconds": classification_time,
+                    "prediction": results,
+                }
+
+                return jsonify(response)
+            finally:
+                # Restore original voting strategy
+                self.classifier.ensemble.voting_strategy = original_strategy
 
         except Exception as e:
             self.stats["errors"] += 1
@@ -329,9 +353,33 @@ class FundusInferenceServer:
             classification_time = 0
 
             if self.classifier:
-                classification_start = time.time()
-                classification_results = self.classifier.classify(variants)
-                classification_time = time.time() - classification_start
+                # Get voting strategy from query parameter (default to config value)
+                voting_strategy = request.args.get(
+                    "voting_strategy", self.classifier.ensemble.voting_strategy
+                )
+
+                # Validate voting strategy
+                if voting_strategy not in ["soft", "hard"]:
+                    return (
+                        jsonify(
+                            {
+                                "error": f"Invalid voting_strategy '{voting_strategy}'. Must be 'soft' or 'hard'"
+                            }
+                        ),
+                        400,
+                    )
+
+                # Temporarily set voting strategy if different from default
+                original_strategy = self.classifier.ensemble.voting_strategy
+                self.classifier.ensemble.voting_strategy = voting_strategy
+
+                try:
+                    classification_start = time.time()
+                    classification_results = self.classifier.classify(variants)
+                    classification_time = time.time() - classification_start
+                finally:
+                    # Restore original voting strategy
+                    self.classifier.ensemble.voting_strategy = original_strategy
 
             # Prepare response
             response = {
@@ -377,16 +425,18 @@ class FundusInferenceServer:
         try:
             self.stats["total_requests"] += 1
 
-            # Get images from request
-            images = self._get_images_from_request(request)
-            if not images:
+            # Get images from request (returns list of tuples: (image, filename))
+            image_data = self._get_images_from_request(request)
+            if not image_data:
                 return jsonify({"error": "No valid images provided"}), 400
+
+            # Separate images and filenames
+            images = [img for img, _ in image_data]
+            filenames = [name for _, name in image_data]
 
             # Process batch
             start_time = time.time()
-            results = self.preprocessor.process_batch(
-                images, [f"batch_image_{i}" for i in range(len(images))]
-            )
+            results = self.preprocessor.process_batch(images, filenames)
             processing_time = time.time() - start_time
 
             # Convert results
@@ -402,6 +452,7 @@ class FundusInferenceServer:
                         {
                             "status": "success",
                             "image_index": i,
+                            "image_name": filenames[i],
                             "variants": response_variants,
                         }
                     )
@@ -410,6 +461,7 @@ class FundusInferenceServer:
                         {
                             "status": "failed",
                             "image_index": i,
+                            "image_name": filenames[i],
                             "error": "Processing failed",
                         }
                     )
@@ -448,16 +500,18 @@ class FundusInferenceServer:
                     400,
                 )
 
-            # Get images from request
-            images = self._get_images_from_request(request)
-            if not images:
+            # Get images from request (returns list of tuples: (image, filename))
+            image_data = self._get_images_from_request(request)
+            if not image_data:
                 return jsonify({"error": "No valid images provided"}), 400
+
+            # Separate images and filenames
+            images = [img for img, _ in image_data]
+            filenames = [name for _, name in image_data]
 
             # Process batch
             start_time = time.time()
-            preprocessing_results = self.preprocessor.process_batch(
-                images, [f"batch_image_{i}" for i in range(len(images))]
-            )
+            preprocessing_results = self.preprocessor.process_batch(images, filenames)
             preprocessing_time = time.time() - start_time
 
             # Classify each result
@@ -472,6 +526,7 @@ class FundusInferenceServer:
                             {
                                 "status": "success",
                                 "image_index": i,
+                                "image_name": filenames[i],
                                 "prediction": classification_results,
                             }
                         )
@@ -480,6 +535,7 @@ class FundusInferenceServer:
                             {
                                 "status": "classification_failed",
                                 "image_index": i,
+                                "image_name": filenames[i],
                                 "error": str(e),
                             }
                         )
@@ -488,6 +544,7 @@ class FundusInferenceServer:
                         {
                             "status": "preprocessing_failed",
                             "image_index": i,
+                            "image_name": filenames[i],
                             "error": "Preprocessing failed",
                         }
                     )
@@ -542,8 +599,12 @@ class FundusInferenceServer:
             self.logger.error(f"Error extracting image from request: {e}")
             return None
 
-    def _get_images_from_request(self, req) -> List[np.ndarray]:
-        """Extract multiple images from Flask request."""
+    def _get_images_from_request(self, req) -> List[tuple]:
+        """Extract multiple images from Flask request.
+
+        Returns:
+            List of tuples (image, filename)
+        """
         images = []
 
         try:
@@ -556,7 +617,7 @@ class FundusInferenceServer:
                     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
                     if image is not None:
-                        images.append(image)
+                        images.append((image, file.filename))
 
             return images
 
