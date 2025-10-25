@@ -84,7 +84,7 @@ Applies Contrast Limited Adaptive Histogram Equalization (CLAHE) to each RGB cha
 
 #### Variant 3: Ben Graham Enhancement (Min-pooling)
 ```yaml
-ben_graham:
+min_pooling:
   enabled: true
   sigma_x: 10
   enhancement_factor: 4

@@ -10,7 +10,7 @@
                 "--config",
                 "configs/preprocessing_config.yaml",
                 "--input",
-                "${workspaceFolder}/test-images/00a8624548a9.png",
+                "${workspaceFolder}/test-images/0abf0c485f66.png",
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
@@ -53,31 +53,6 @@
             ],
         },
         {
-            "name": "Debug: Preprocess Image (Custom Input)",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/fundus_preprocessor.py",
-            "args": [
-                "--config",
-                "configs/preprocessing_config.yaml",
-                "--input",
-                "${input:imageFile}",
-                "--output",
-                "./processed_images",
-                "--debug"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            },
-            "stopOnEntry": false,
-            "justMyCode": true,
-            "purpose": [
-                "debug-in-terminal"
-            ]
-        },
-        {
             "name": "Debug: Inference Server",
             "type": "python",
             "request": "launch",
@@ -117,7 +92,7 @@
                 "--server",
                 "http://localhost:5000",
                 "--image",
-                "D:\\FEI STU\\ing\\2roc\\DATABASE\\Aptos\\train_images\\00a8624548a9.png",
+                "${workspaceFolder}/test-images/00a8624548a9.png",
                 "--output",
                 "./client_output"
             ],
@@ -156,45 +131,19 @@
             "purpose": [
                 "debug-in-terminal"
             ]
-        },
-        {
-            "name": "Debug: Batch Preprocessing",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/fundus_preprocessor.py",
-            "args": [
-                "--config",
-                "configs/preprocessing_config.yaml",
-                "--input",
-                "${input:batchDirectory}",
-                "--output",
-                "./batch_output",
-                "--batch",
-                "--debug"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            },
-            "stopOnEntry": false,
-            "justMyCode": true,
-            "purpose": [
-                "debug-in-terminal"
-            ]
         }
     ],
     "inputs": [
         {
             "id": "imageFile",
             "description": "Path to the image file to process",
-            "default": "D:\\FEI STU\\ing\\2roc\\DATABASE\\Aptos\\train_images\\00a8624548a9.png",
+            "default": "${workspaceFolder}/test-images/00a8624548a9.png",
             "type": "promptString"
         },
         {
             "id": "batchDirectory",
             "description": "Path to the directory containing images to batch process",
-            "default": "D:\\FEI STU\\ing\\2roc\\DATABASE\\Aptos\\train_images\\",
+            "default": "${workspaceFolder}/test-images/",
             "type": "promptString"
         }
     ]

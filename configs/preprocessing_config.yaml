@@ -394,10 +394,10 @@ performance:
 
 # Debugging and Logging
 debug:
-  enabled: true
-  save_intermediate_images: true # Save each processing step
+  enabled: false # Enable debug mode
+  save_intermediate_images: true # Save each processing step - all border_clipped variations
   log_processing_time: true # Log time taken for each step
-  verbose_logging: true # Detailed logging
+  log_level: INFO
 
   # Intermediate save locations
   intermediate_paths:

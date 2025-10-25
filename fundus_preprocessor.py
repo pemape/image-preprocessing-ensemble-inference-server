@@ -67,8 +67,10 @@ class FundusPreprocessor:
     def _setup_logging(self) -> logging.Logger:
         """Setup logging based on configuration."""
         logger = logging.getLogger('FundusPreprocessor')
+        debug_config = self.config.get('debug', {})
+        log_severity = debug_config.get('log_level', 'DEBUG')
 
-        if self.config.get('debug', {}).get('verbose_logging', False):
+        if log_severity.upper() == 'DEBUG':
             level = logging.DEBUG
         else:
             level = logging.INFO
@@ -1123,7 +1125,7 @@ def create_default_config(output_path: str):
             'max_workers': 4
         },
         'debug': {
-            'verbose_logging': False,
+            'log_level': 'INFO',
             'save_intermediate_images': False,
             'log_processing_time': True,
             'intermediate_paths': {
