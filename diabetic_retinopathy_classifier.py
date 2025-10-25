@@ -53,6 +53,9 @@ class XceptionModel(nn.Module):
     def forward(self, x):
         return self.xception(x)
 
+    def get_model_ref(self):
+        return self.xception
+
 
 class EfficientNetB4Model(nn.Module):
     """EfficientNetB4 model for diabetic retinopathy classification."""
@@ -63,15 +66,17 @@ class EfficientNetB4Model(nn.Module):
         # Load pretrained EfficientNetB4
         self.efficientnet = efficientnet_b4()
 
-        # num_ftrs = model.classifier[1].in_features
-
+        num_ftrs = self.efficientnet.classifier[1].in_features
         # Replace the final classifier
-        self.efficientnet.classifier = nn.Linear(
-            self.efficientnet.classifier[1].in_features, num_classes
+        self.efficientnet.classifier[1] = nn.Linear(
+            in_features=num_ftrs, out_features=num_classes, bias=True
         )
 
     def forward(self, x):
         return self.efficientnet(x)
+
+    def get_model_ref(self):
+        return self.efficientnet
 
 
 class ModelEnsemble:
@@ -97,6 +102,10 @@ class ModelEnsemble:
             model = self._load_model(model_config)
             if model is not None:
                 self.models.append({"model": model, "config": model_config})
+            else:
+                self.logger.warning(
+                    f"Model {model_config.get('model_path', 'unknown')} could not be loaded and will be skipped."
+                )
 
         self.logger.info(f"Loaded {len(self.models)} models for ensemble")
 
@@ -115,8 +124,10 @@ class ModelEnsemble:
                     )
                     return None
                 model = XceptionModel(num_classes=num_classes, pretrained=False)
+                model = model.get_model_ref()
             elif architecture == "efficientnetb4":
                 model = EfficientNetB4Model(num_classes=num_classes, pretrained=False)
+                model = model.get_model_ref()
             else:
                 self.logger.error(f"Unknown architecture: {architecture}")
                 return None

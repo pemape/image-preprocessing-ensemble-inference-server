@@ -27,14 +27,14 @@ models:
   - architecture: efficientnetb4
     dataset: APTOS5
     preprocessing_variant: lab_clahe
-    model_path: "C:\\ProgrammingProjects\\python\\image-preprocessed-ensemble\\results-archive\\tensorboard_hindawi\\runs_Aptos5\\LabClahe500x500\\EfficientNetB4\\Nadam\\8\\301_07_2023_00_08_37\\Aptos5_8_EfficientNetB4_opt=Nadam_lr=0.001_best_ckp.pt"
+    model_path: "C:\\ProgrammingProjects\\python\\image-preprocessed-ensemble\\results-archive\\tensorboard_hindawi\\runs_Aptos5\\LabClahe500x500\\EfficientNetB4\\Nadam\\8\\101_07_2023_07_11_11\\Aptos5_8_EfficientNetB4_opt=Nadam_lr=0.001_best_ckp.pt"
     num_classes: 5
     input_size: [500, 500]
 
   - architecture: efficientnetb4
     dataset: APTOS5
     preprocessing_variant: max_green_gsc
-    model_path: "C:\\ProgrammingProjects\\python\\image-preprocessed-ensemble\\results-archive\\tensorboard_hindawi\\runs_Aptos5\\MaxGreenGscClahe500x500\\EfficientNetB4\\Nadam\\8\\301_07_2023_00_08_37\\Aptos5_8_EfficientNetB4_opt=Nadam_lr=0.001_best_ckp.pt"
+    model_path: "C:\\ProgrammingProjects\\python\\image-preprocessed-ensemble\\results-archive\\tensorboard_hindawi\\runs_Aptos5\\MaxGreenGscClahe500x500\\EfficientNetB4\\Nadam\\8\\101_09_2023_20_38_43\\Aptos5_8_EfficientNetB4_opt=Nadam_lr=0.001_best_ckp.pt"
     num_classes: 5
     input_size: [500, 500]
 
