@@ -478,6 +478,17 @@ Pillow>=8.0.0
 scipy>=1.7.0  # For Frangi filtering
 ```
 
+## System Requirements
+
+### GPU Support and CUDA Compatibility
+
+This preprocessing pipeline supports GPU acceleration for significantly improved performance:
+
+- **CUDA Version**: 13.0 (tested)
+- **Supported GPUs**: NVIDIA RTX 30/40 series, Tesla, Quadro cards
+- **Minimum GPU Memory**: 4GB VRAM recommended (8GB+ for batch processing)
+- **Driver Version**: 581.57+ (or latest stable)
+
 ## Citation
 
 If you use this preprocessing pipeline in your research, please cite the original paper:

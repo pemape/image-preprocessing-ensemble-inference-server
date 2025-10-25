@@ -3,7 +3,6 @@ force_cpu: false # Set to true if you want to force CPU usage
 voting_strategy: soft # Choose 'soft' for probability averaging or 'hard' for majority vote
 
 models:
-  # EfficientNetB4 model with Original preprocessing
   - architecture: efficientnetb4
     dataset: APTOS5
     preprocessing_variant: original
@@ -11,7 +10,6 @@ models:
     num_classes: 5
     input_size: [500, 500]
 
-  # EfficientNetB4 model with RGBClahe preprocessing
   - architecture: efficientnetb4
     dataset: APTOS5
     preprocessing_variant: rgb_clahe
@@ -19,11 +17,24 @@ models:
     num_classes: 5
     input_size: [500, 500]
 
-  # EfficientNetB4 model with Min-pooling preprocessing
   - architecture: efficientnetb4
     dataset: APTOS5
-    preprocessing_variant: rgb_clahe
+    preprocessing_variant: min_pooling
     model_path: "C:\\ProgrammingProjects\\python\\image-preprocessed-ensemble\\results-archive\\tensorboard_hindawi\\runs_Aptos5\\BenGraham30x500x500\\EfficientNetB4\\Nadam\\8\\301_07_2023_00_08_37\\Aptos5_8_EfficientNetB4_opt=Nadam_lr=0.001_best_ckp.pt"
+    num_classes: 5
+    input_size: [500, 500]
+
+  - architecture: efficientnetb4
+    dataset: APTOS5
+    preprocessing_variant: lab_clahe
+    model_path: "C:\\ProgrammingProjects\\python\\image-preprocessed-ensemble\\results-archive\\tensorboard_hindawi\\runs_Aptos5\\LabClahe500x500\\EfficientNetB4\\Nadam\\8\\301_07_2023_00_08_37\\Aptos5_8_EfficientNetB4_opt=Nadam_lr=0.001_best_ckp.pt"
+    num_classes: 5
+    input_size: [500, 500]
+
+  - architecture: efficientnetb4
+    dataset: APTOS5
+    preprocessing_variant: max_green_gsc
+    model_path: "C:\\ProgrammingProjects\\python\\image-preprocessed-ensemble\\results-archive\\tensorboard_hindawi\\runs_Aptos5\\MaxGreenGscClahe500x500\\EfficientNetB4\\Nadam\\8\\301_07_2023_00_08_37\\Aptos5_8_EfficientNetB4_opt=Nadam_lr=0.001_best_ckp.pt"
     num_classes: 5
     input_size: [500, 500]
 

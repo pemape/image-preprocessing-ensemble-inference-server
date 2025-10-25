@@ -54,7 +54,7 @@
         },
         {
             "name": "Debug: Inference Server",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/fundus_inference_server.py",
             "args": [
