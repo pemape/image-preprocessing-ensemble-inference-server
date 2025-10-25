@@ -274,10 +274,8 @@ class FundusPreprocessor:
             selected_ratio = results[selected_method][1]
             self.logger.warning(f"Main method '{main_method}' failed, using best alternative '{selected_method}' with crop ratio {selected_ratio:.3f}")
 
-        # Save final selected result
+        # Save final clipping report
         if debug_enabled:
-            self._save_border_clipping_debug_image(selected_image, f"final_selected_{selected_method}", selected_ratio)
-
             # Create a comparison summary
             self._create_border_clipping_comparison_report(results, selected_method, main_method)
 
@@ -309,7 +307,7 @@ class FundusPreprocessor:
 
             # Create detailed filename with crop ratio
             base_name = image_id or "image"
-            filename = f"{base_name}_{method_name}_crop{crop_ratio:.3f}.jpg"
+            filename = f"{base_name}_{method_name}_crop_{crop_ratio:.3f}.jpg"
             filepath = os.path.join(black_border_path, filename)
 
             # Save image
@@ -364,7 +362,7 @@ class FundusPreprocessor:
 
             # Save report as JSON
             base_name = image_id or "image"
-            report_filename = f"{base_name}_border_clipping_comparison.json"
+            report_filename = f"report_{base_name}_border_clipping_comparison.json"
             report_filepath = os.path.join(black_border_path, report_filename)
 
             with open(report_filepath, 'w') as f:
