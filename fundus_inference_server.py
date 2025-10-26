@@ -500,6 +500,22 @@ class FundusInferenceServer:
                     400,
                 )
 
+            # Get voting strategy from query parameter (default to config value)
+            voting_strategy = request.args.get(
+                "voting_strategy", self.classifier.ensemble.voting_strategy
+            )
+
+            # Validate voting strategy
+            if voting_strategy not in ["soft", "hard"]:
+                return (
+                    jsonify(
+                        {
+                            "error": f"Invalid voting_strategy '{voting_strategy}'. Must be 'soft' or 'hard'"
+                        }
+                    ),
+                    400,
+                )
+
             # Get images from request (returns list of tuples: (image, filename))
             image_data = self._get_images_from_request(request)
             if not image_data:
@@ -514,42 +530,50 @@ class FundusInferenceServer:
             preprocessing_results = self.preprocessor.process_batch(images, filenames)
             preprocessing_time = time.time() - start_time
 
-            # Classify each result
-            classification_start = time.time()
-            response_results = []
+            # Temporarily set voting strategy if different from default
+            original_strategy = self.classifier.ensemble.voting_strategy
+            self.classifier.ensemble.voting_strategy = voting_strategy
 
-            for i, variants in enumerate(preprocessing_results):
-                if variants:  # Preprocessing succeeded
-                    try:
-                        classification_results = self.classifier.classify(variants)
+            try:
+                # Classify each result
+                classification_start = time.time()
+                response_results = []
+
+                for i, variants in enumerate(preprocessing_results):
+                    if variants:  # Preprocessing succeeded
+                        try:
+                            classification_results = self.classifier.classify(variants)
+                            response_results.append(
+                                {
+                                    "status": "success",
+                                    "image_index": i,
+                                    "image_name": filenames[i],
+                                    "prediction": classification_results,
+                                }
+                            )
+                        except Exception as e:
+                            response_results.append(
+                                {
+                                    "status": "classification_failed",
+                                    "image_index": i,
+                                    "image_name": filenames[i],
+                                    "error": str(e),
+                                }
+                            )
+                    else:  # Preprocessing failed
                         response_results.append(
                             {
-                                "status": "success",
+                                "status": "preprocessing_failed",
                                 "image_index": i,
                                 "image_name": filenames[i],
-                                "prediction": classification_results,
+                                "error": "Preprocessing failed",
                             }
                         )
-                    except Exception as e:
-                        response_results.append(
-                            {
-                                "status": "classification_failed",
-                                "image_index": i,
-                                "image_name": filenames[i],
-                                "error": str(e),
-                            }
-                        )
-                else:  # Preprocessing failed
-                    response_results.append(
-                        {
-                            "status": "preprocessing_failed",
-                            "image_index": i,
-                            "image_name": filenames[i],
-                            "error": "Preprocessing failed",
-                        }
-                    )
 
-            classification_time = time.time() - classification_start
+                classification_time = time.time() - classification_start
+            finally:
+                # Restore original voting strategy
+                self.classifier.ensemble.voting_strategy = original_strategy
 
             self.stats["preprocessing_requests"] += len(images)
             self.stats["classification_requests"] += len(images)
@@ -565,6 +589,7 @@ class FundusInferenceServer:
                     "classification_seconds": classification_time,
                     "total_seconds": preprocessing_time + classification_time,
                 },
+                "voting_strategy": voting_strategy,
                 "results": response_results,
             }
 

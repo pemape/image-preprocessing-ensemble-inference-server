@@ -40,6 +40,10 @@ Voting Strategy (Soft/Hard)
 Final DR Classification (0-4)
 ```
 
+![Preprocessing Pipeline Architecture](docs/images_preprocessing_ensemble.drawio.png)
+
+*Figure 1: Complete preprocessing and ensemble classification pipeline*
+
 ### Step 1: Black Border Clipping
 
 Fundus images often contain black borders that need to be removed for optimal processing:
