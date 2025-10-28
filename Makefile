@@ -24,12 +24,24 @@ help: ## Show this help message
 	@echo "Fundus Image Preprocessing System"
 	@echo "Available commands:"
 	@echo "  install      - Install required dependencies"
-	@echo "  install-dev  - Install development dependencies"  
+	@echo "  install-dev  - Install development dependencies"
 	@echo "  setup        - Setup project directories"
 	@echo "  preprocess   - Run preprocessing on test image"
 	@echo "  preprocess-batch   - Run preprocessing on test image batch"
 	@echo "  server       - Start inference server"
 	@echo "  server-debug - Start server in debug mode"
+	@echo "  server-redis - Start server with Redis caching enabled"
+	@echo "  redis-start  - Start Redis server in Docker"
+	@echo "  redis-stop   - Stop Redis server"
+	@echo "  redis-remove - Remove Redis container"
+	@echo "  redis-restart- Restart Redis server"
+	@echo "  redis-logs   - Show Redis server logs"
+	@echo "  redis-cli    - Connect to Redis CLI"
+	@echo "  redis-info   - Get Redis server info"
+	@echo "  redis-flush  - Flush all Redis cache data"
+	@echo "  cache-stats  - Get cache statistics from server"
+	@echo "  cache-health - Check cache health status"
+	@echo "  cache-clear  - Clear server cache via API"
 	@echo "  client-info  - Get server information"
 	@echo "  client-health- Check server health"
 	@echo "  test-config  - Test configuration validity"
@@ -76,7 +88,59 @@ server-debug: ## Start server in debug mode
 	@echo "Starting inference server in debug mode..."
 	$(PYTHON) fundus_inference_server.py --config $(CONFIG_FILE) --host $(SERVER_HOST) --port $(SERVER_PORT) --debug --log-level DEBUG
 
-# Client Operations  
+server-redis: ## Start server with Redis caching enabled
+	@echo "Starting inference server with Redis caching..."
+	$(PYTHON) fundus_inference_server.py --preprocessing-config configs\preprocessing_config.yaml --classifier-config configs\classifier_config.yaml --host $(SERVER_HOST) --port $(SERVER_PORT) --redis-enabled true
+
+# Redis Cache Operations
+redis-start: ## Start Redis server in Docker
+	@echo "Starting Redis server..."
+	docker run --name redis-server -d -p 6379:6379 redis
+	@echo "Redis server started on port 6379"
+
+redis-stop: ## Stop Redis server
+	@echo "Stopping Redis server..."
+	docker stop redis-server
+	@echo "Redis server stopped"
+
+redis-remove: ## Remove Redis container
+	@echo "Removing Redis container..."
+	docker rm redis-server
+	@echo "Redis container removed"
+
+redis-restart: redis-stop redis-remove redis-start ## Restart Redis server
+	@echo "Redis server restarted"
+
+redis-logs: ## Show Redis server logs
+	@echo "Showing Redis logs..."
+	docker logs redis-server
+
+redis-cli: ## Connect to Redis CLI
+	@echo "Connecting to Redis CLI..."
+	docker exec -it redis-server redis-cli
+
+redis-info: ## Get Redis server info
+	@echo "Getting Redis server info..."
+	docker exec -it redis-server redis-cli INFO
+
+redis-flush: ## Flush all Redis cache data
+	@echo "Flushing all Redis data..."
+	docker exec -it redis-server redis-cli FLUSHALL
+	@echo "Redis cache cleared"
+
+cache-stats: ## Get cache statistics from server
+	@echo "Getting cache statistics..."
+	curl -s http://$(SERVER_HOST):$(SERVER_PORT)/cache/stats | python -m json.tool
+
+cache-health: ## Check cache health status
+	@echo "Checking cache health..."
+	curl -s http://$(SERVER_HOST):$(SERVER_PORT)/cache/health | python -m json.tool
+
+cache-clear: ## Clear server cache via API
+	@echo "Clearing server cache..."
+	curl -X POST -s http://$(SERVER_HOST):$(SERVER_PORT)/cache/clear | python -m json.tool
+
+# Client Operations
 client-info: ## Get server information
 	@echo "Getting server information..."
 	$(PYTHON) client.py --server http://$(SERVER_HOST):$(SERVER_PORT) --info
@@ -170,7 +234,7 @@ requirements-check: ## Check requirements
 # Version and info
 version: ## Show version information
 	@echo "Fundus Image Preprocessing System"
-	@echo "Version: 1.0.0" 
+	@echo "Version: 1.0.0"
 	@$(PYTHON) --version
 	@echo "Paper: https://ietresearch.onlinelibrary.wiley.com/doi/full/10.1049/ipr2.12987"
 

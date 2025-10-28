@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 # Import our modules
 from fundus_preprocessor import FundusPreprocessor
 from diabetic_retinopathy_classifier import DiabeticRetinopathyClassifier
+from redis_cache_manager import RedisCacheManager
 
 
 class FundusInferenceServer:
@@ -36,6 +37,7 @@ class FundusInferenceServer:
         port: int = 5000,
         debug: bool = False,
         max_batch_size: int = 100,
+        redis_config: Optional[Dict] = None,
     ):
         """
         Initialize the inference server.
@@ -47,6 +49,7 @@ class FundusInferenceServer:
             port: Server port
             debug: Debug mode
             max_batch_size: Maximum number of images allowed in a batch request
+            redis_config: Redis configuration dictionary (optional)
         """
         self.host = host
         self.port = port
@@ -69,6 +72,9 @@ class FundusInferenceServer:
                 self.classifier = None
         else:
             self.logger.info("Running in preprocessing-only mode")
+
+        # Initialize Redis cache (optional)
+        self.cache = self._initialize_cache(redis_config or {})
 
         # Setup Flask app
         self.app = self._create_flask_app()
@@ -96,6 +102,26 @@ class FundusInferenceServer:
         )
 
         return logger
+
+    def _initialize_cache(self, redis_config: Dict) -> RedisCacheManager:
+        """
+        Initialize Redis cache manager.
+
+        Args:
+            redis_config: Redis configuration dictionary
+
+        Returns:
+            RedisCacheManager instance
+        """
+        return RedisCacheManager(
+            enabled=redis_config.get("enabled", False),
+            host=redis_config.get("host", "localhost"),
+            port=redis_config.get("port", 6379),
+            db=redis_config.get("db", 0),
+            password=redis_config.get("password"),
+            ttl=redis_config.get("ttl", 86400),
+            key_prefix=redis_config.get("key_prefix", "fundus_inference"),
+        )
 
     # ========== Response Schema Helpers ==========
 
@@ -432,6 +458,11 @@ class FundusInferenceServer:
         app.route("/config", methods=["GET"])(self.get_config)
         app.route("/models", methods=["GET"])(self.get_models)
 
+        # Cache management endpoints
+        app.route("/cache/stats", methods=["GET"])(self.get_cache_stats)
+        app.route("/cache/health", methods=["GET"])(self.get_cache_health)
+        app.route("/cache/clear", methods=["POST"])(self.clear_cache)
+
         # Processing endpoints
         app.route("/preprocess", methods=["POST"])(self.preprocess_image)
         app.route("/classify", methods=["POST"])(self.classify_image)
@@ -565,6 +596,43 @@ class FundusInferenceServer:
         model_info = self.classifier.get_model_info()
         return jsonify(model_info)
 
+    def get_cache_stats(self):
+        """Get cache statistics endpoint."""
+        self.stats["total_requests"] += 1
+
+        cache_stats = self.cache.get_stats()
+        return jsonify(cache_stats)
+
+    def get_cache_health(self):
+        """Get cache health status endpoint."""
+        self.stats["total_requests"] += 1
+
+        health_status = self.cache.health_check()
+        return jsonify(health_status)
+
+    def clear_cache(self):
+        """Clear cache endpoint."""
+        self.stats["total_requests"] += 1
+
+        try:
+            # Get optional pattern from request
+            data = request.get_json() if request.is_json else {}
+            pattern = data.get("pattern") if data else None
+
+            deleted_count = self.cache.clear_all(pattern)
+
+            return jsonify(
+                {
+                    "status": "success",
+                    "message": f"Cleared {deleted_count} cached entries",
+                    "deleted_count": deleted_count,
+                    "pattern": pattern or "all",
+                }
+            )
+        except Exception as e:
+            self.logger.error(f"Cache clear error: {e}")
+            return jsonify({"error": str(e)}), 500
+
     def preprocess_image(self):
         """Preprocess a single image."""
         try:
@@ -683,6 +751,10 @@ class FundusInferenceServer:
                 )
 
             # Get image from request and extract filename
+
+            # TODO:
+            # image_data = self._get_image_from_request(request)
+
             file = request.files.get("image")
             if not file or file.filename == "":
                 return jsonify({"error": "No valid image provided"}), 400
@@ -696,6 +768,55 @@ class FundusInferenceServer:
 
             if image is None:
                 return jsonify({"error": "Failed to decode image"}), 400
+
+            # Get model configuration for cache key
+            if self.classifier:
+                voting_strategy = request.args.get(
+                    "voting_strategy", self.classifier.ensemble.voting_strategy
+                )
+                model_info = self.classifier.get_model_info()
+                model_architecture = model_info.get(
+                    "architectures", ["EfficientNetB4"]
+                )[0]
+                ensemble_size = len(self.classifier.ensemble.models)
+            else:
+                voting_strategy = "soft"
+                model_architecture = "unknown"
+                ensemble_size = 0
+
+            # CHECK CACHE: Try to get cached result with model configuration
+            cached_result = self.cache.get(
+                image_filename,
+                image,
+                voting_strategy=voting_strategy,
+                model_architecture=model_architecture,
+                ensemble_size=ensemble_size,
+            )
+            if cached_result is not None:
+                self.logger.info(f"Cache HIT for image: {image_filename}")
+
+                # Update processing times to reflect cache retrieval (near-zero)
+                cached_result["processing_times"] = {
+                    "00_preprocessing_ms": 0.0,
+                    "01_inference_ms": 0.0,
+                    "total_ms": 0.0,
+                    "per_image_ms": 0.0,
+                }
+
+                # Update timestamp to current time
+                cached_result["timestamp_utc"] = self._get_utc_timestamp()
+
+                # Generate new request ID for this cached request
+                cached_result["request_id"] = self._generate_request_id()
+
+                # Add cache indicators
+                cached_result["cached"] = True
+                cached_result["cache_hit"] = True
+
+                return jsonify(cached_result)
+
+            # Cache miss - proceed with processing
+            self.logger.debug(f"Cache MISS for image: {image_filename}")
 
             # Preprocess
             preprocessing_start = time.time()
@@ -752,6 +873,24 @@ class FundusInferenceServer:
                     variants=variants if include_images else None,
                     image_filename=image_filename,
                 )
+
+                # Add cache indicator
+                response["cached"] = False
+                response["cache_hit"] = False
+
+                # STORE IN CACHE: Save result for future requests with model configuration
+                # Don't cache if include_images=true (too large)
+                if not include_images:
+                    cache_stored = self.cache.set(
+                        image_filename,
+                        image,
+                        response,
+                        voting_strategy=voting_strategy,
+                        model_architecture=model_architecture,
+                        ensemble_size=ensemble_size,
+                    )
+                    if cache_stored:
+                        self.logger.debug(f"Result cached for image: {image_filename}")
             else:
                 # Preprocessing-only mode (classifier not available)
                 response = {
@@ -759,12 +898,13 @@ class FundusInferenceServer:
                     "request_id": self._generate_request_id(),
                     "timestamp_utc": self._get_utc_timestamp(),
                     "image_name": image_filename,
+                    "cached": False,
+                    "cache_hit": False,
                     "processing_times": {
-                        "00_preprocessing_ms": round(preprocessing_time * 1000, 2),
-                        "01_inference_ms": round(classification_time * 1000, 2),
-                        "total_ms": round(
-                            (preprocessing_time + classification_time) * 1000, 2
-                        ),
+                        "preprocessing_ms": round(preprocessing_time * 1000, 2),
+                        "inference_ms": 0.0,
+                        "total_ms": round(preprocessing_time * 1000, 2),
+                        "per_image_ms": round(preprocessing_time * 1000, 2),
                     },
                     "metadata": {
                         "image_properties": {
@@ -860,9 +1000,12 @@ class FundusInferenceServer:
             return jsonify({"error": str(e)}), 500
 
     def batch_process(self):
-        """Batch full processing endpoint."""
+        """Batch full processing endpoint with Redis caching support."""
         try:
             self.stats["total_requests"] += 1
+
+            # TODO:
+            # Middlewares??? to simplify the request?
 
             if not self.classifier:
                 return (
@@ -910,66 +1053,311 @@ class FundusInferenceServer:
                     400,
                 )
 
-            # Separate images and filenames
-            images = [img for img, _ in image_data]
-            filenames = [name for _, name in image_data]
+            # CHECK CACHE: Try to get cached results for each image
+            cached_results = []
+            images_to_process = []
+            images_to_process_indices = []
+            cache_hit_count = 0
 
-            # Process batch
-            start_time = time.time()
-            preprocessing_results = self.preprocessor.process_batch(images, filenames)
-            preprocessing_time = time.time() - start_time
+            for i, (image, filename) in enumerate(image_data):
+                cached_result = self.cache.get(filename, image)
+                if cached_result is not None:
+                    # Cache hit - use cached result
+                    cache_hit_count += 1
+                    self.logger.info(f"Cache HIT for batch image [{i}]: {filename}")
+                    cached_results.append(
+                        {"index": i, "result": cached_result, "from_cache": True}
+                    )
+                else:
+                    # Cache miss - need to process
+                    self.logger.debug(f"Cache MISS for batch image [{i}]: {filename}")
+                    images_to_process.append((image, filename))
+                    images_to_process_indices.append(i)
 
-            # Temporarily set voting strategy if different from default
-            original_strategy = self.classifier.ensemble.voting_strategy
-            self.classifier.ensemble.voting_strategy = voting_strategy
+            self.logger.info(
+                f"Batch cache stats: {cache_hit_count}/{total_images} hits, "
+                f"{len(images_to_process)} to process"
+            )
 
-            try:
-                # Classify each result
-                classification_start = time.time()
-                classification_results_list = []
+            # Process only non-cached images
+            preprocessing_time = 0
+            classification_time = 0
+            processing_results = []
 
-                for i, variants in enumerate(preprocessing_results):
-                    if variants:  # Preprocessing succeeded
-                        try:
-                            classification_results = self.classifier.classify(variants)
-                            classification_results_list.append(
+            if images_to_process:
+                # Separate images and filenames for processing
+                images = [img for img, _ in images_to_process]
+                filenames = [name for _, name in images_to_process]
+
+                # Process batch
+                start_time = time.time()
+                preprocessing_results = self.preprocessor.process_batch(
+                    images, filenames
+                )
+                preprocessing_time = time.time() - start_time
+
+                # Temporarily set voting strategy if different from default
+                original_strategy = self.classifier.ensemble.voting_strategy
+                self.classifier.ensemble.voting_strategy = voting_strategy
+
+                try:
+                    # Classify each result
+                    classification_start = time.time()
+
+                    for i, variants in enumerate(preprocessing_results):
+                        if variants:  # Preprocessing succeeded
+                            try:
+                                classification_results = self.classifier.classify(
+                                    variants
+                                )
+
+                                # Build the complete response for this image
+                                image, filename = images_to_process[i]
+                                individual_response = self._build_single_process_response(
+                                    image_shape=image.shape[:2],
+                                    processed_shape=(500, 500),
+                                    preprocessing_time=preprocessing_time
+                                    / len(images_to_process),
+                                    classification_time=0,  # Will be calculated after
+                                    classification_results=classification_results,
+                                    include_images=False,
+                                    variants=None,
+                                    image_filename=filename,
+                                )
+
+                                processing_results.append(
+                                    {
+                                        "index": images_to_process_indices[i],
+                                        "result": {
+                                            "status": "success",
+                                            "prediction": classification_results,
+                                        },
+                                        "response": individual_response,
+                                        "image": image,
+                                        "filename": filename,
+                                        "from_cache": False,
+                                    }
+                                )
+                            except Exception as e:
+                                processing_results.append(
+                                    {
+                                        "index": images_to_process_indices[i],
+                                        "result": {
+                                            "status": "classification_failed",
+                                            "error": str(e),
+                                        },
+                                        "from_cache": False,
+                                    }
+                                )
+                        else:  # Preprocessing failed
+                            processing_results.append(
                                 {
-                                    "status": "success",
-                                    "prediction": classification_results,
+                                    "index": images_to_process_indices[i],
+                                    "result": {
+                                        "status": "preprocessing_failed",
+                                        "error": "Preprocessing failed",
+                                    },
+                                    "from_cache": False,
                                 }
                             )
-                        except Exception as e:
-                            classification_results_list.append(
-                                {
-                                    "status": "classification_failed",
-                                    "error": str(e),
-                                }
+
+                    classification_time = time.time() - classification_start
+                finally:
+                    # Restore original voting strategy
+                    self.classifier.ensemble.voting_strategy = original_strategy
+
+                # STORE IN CACHE: Cache successful results
+                for proc_result in processing_results:
+                    if (
+                        proc_result["result"].get("status") == "success"
+                        and "response" in proc_result
+                    ):
+                        cache_stored = self.cache.set(
+                            proc_result["filename"],
+                            proc_result["image"],
+                            proc_result["response"],
+                        )
+                        if cache_stored:
+                            self.logger.debug(
+                                f"Result cached for batch image: {proc_result['filename']}"
                             )
-                    else:  # Preprocessing failed
-                        classification_results_list.append(
-                            {
-                                "status": "preprocessing_failed",
-                                "error": "Preprocessing failed",
-                            }
+
+            self.stats["preprocessing_requests"] += len(images_to_process)
+            self.stats["classification_requests"] += len(images_to_process)
+
+            # Combine cached and processed results in original order
+            all_results = cached_results + processing_results
+            all_results.sort(key=lambda x: x["index"])
+
+            # Build final classification results list
+            classification_results_list = []
+            for res in all_results:
+                if res.get("from_cache"):
+                    # Extract the classification info from cached response
+                    cached_response = res["result"]
+                    if "result" in cached_response:
+                        # Build prediction dict from cached response
+                        cached_result = cached_response["result"]
+                        class_probs = cached_result["class_probabilities"]
+
+                        # Map from structured response back to classifier format
+                        label_map = {
+                            "No Diabetic Retinopathy": "No DR",
+                            "Mild Non-Proliferative DR": "Mild DR",
+                            "Moderate Non-Proliferative DR": "Moderate DR",
+                            "Severe Non-Proliferative DR": "Severe DR",
+                            "Proliferative DR": "Proliferative DR",
+                        }
+
+                        # Get the predicted class from cached response
+                        predicted_class_label = cached_result["predicted_class_label"]
+                        predicted_class_short = label_map.get(
+                            predicted_class_label, predicted_class_label
                         )
 
-                classification_time = time.time() - classification_start
-            finally:
-                # Restore original voting strategy
-                self.classifier.ensemble.voting_strategy = original_strategy
+                        prediction_dict = {
+                            "predicted_class": predicted_class_short,
+                            "confidence": cached_result["confidence_score"],
+                            "model_info": cached_response.get("metadata", {}).get(
+                                "model_configuration", {}
+                            ),
+                        }
 
-            self.stats["preprocessing_requests"] += len(images)
-            self.stats["classification_requests"] += len(images)
+                        # Add all class probabilities with their original labels
+                        for cp in class_probs:
+                            classifier_label = label_map.get(cp["label"], cp["label"])
+                            prediction_dict[classifier_label] = cp["probability"]
+
+                        classification_results_list.append(
+                            {
+                                "status": "success",
+                                "prediction": prediction_dict,
+                                "cached": True,
+                            }
+                        )
+                    else:
+                        classification_results_list.append(res["result"])
+                else:
+                    classification_results_list.append(res["result"])
 
             # Build structured response using the new schema
-            response = self._build_batch_process_response(
-                images=image_data,
-                preprocessing_results=preprocessing_results,
-                classification_results_list=classification_results_list,
-                preprocessing_time=preprocessing_time,
-                classification_time=classification_time,
-                voting_strategy=voting_strategy,
+            batch_size = len(image_data)
+            total_time = preprocessing_time + classification_time
+            per_image_time = total_time / batch_size if batch_size > 0 else 0
+
+            # Count successes and failures
+            successful_count = sum(
+                1 for r in classification_results_list if r.get("status") == "success"
             )
+            failed_count = batch_size - successful_count
+
+            response = {
+                "status": "SUCCESS",
+                "request_id": self._generate_request_id("BATCH"),
+                "timestamp_utc": self._get_utc_timestamp(),
+                "batch_details": {
+                    "batch_size": batch_size,
+                    "processed_successfully": successful_count,
+                    "processed_failure": failed_count,
+                },
+                "cache_stats": {
+                    "cache_hits": cache_hit_count,
+                    "cache_misses": len(images_to_process),
+                    "cached_percentage": (
+                        round((cache_hit_count / batch_size) * 100, 2)
+                        if batch_size > 0
+                        else 0
+                    ),
+                },
+                "total_processing_times": {
+                    "preprocessing_ms": round(preprocessing_time * 1000, 2),
+                    "inference_ms": round(classification_time * 1000, 2),
+                    "total_ms": round(total_time * 1000, 2),
+                    "per_image_ms": round(per_image_time * 1000, 2),
+                },
+                "metadata": {
+                    "version_info": {
+                        "api_version": self._get_api_version(),
+                        "model_version": self._get_model_version(),
+                    },
+                },
+            }
+
+            # Add model configuration if classifier is available
+            if self.classifier:
+                model_info = self.classifier.get_model_info()
+                architectures = model_info.get("architectures", [])
+
+                response["metadata"]["model_configuration"] = {
+                    "model_architecture": (
+                        architectures[0] if architectures else "EfficientNetB4"
+                    ),
+                    "ensemble_size": len(self.classifier.ensemble.models),
+                    "trained_datasets": ["APTOS-2019-DR-Classification"],
+                    "voting_strategy": f"{voting_strategy.capitalize()}-Voting",
+                }
+
+            # Build results array
+            results = []
+            for i, (image, filename) in enumerate(image_data):
+                classification_result = classification_results_list[i]
+                is_cached = classification_result.get("cached", False)
+
+                if classification_result.get("status") == "success":
+                    # Calculate individual image processing time (estimate)
+                    if is_cached:
+                        # Cached results have minimal processing time
+                        individual_time = 0
+                        individual_preprocessing = 0
+                        individual_inference = 0
+                    else:
+                        individual_time = (
+                            total_time / len(images_to_process)
+                            if images_to_process
+                            else 0
+                        )
+                        individual_preprocessing = (
+                            preprocessing_time / len(images_to_process)
+                            if images_to_process
+                            else 0
+                        )
+                        individual_inference = (
+                            classification_time / len(images_to_process)
+                            if images_to_process
+                            else 0
+                        )
+
+                    result_entry = {
+                        "image_index": i,
+                        "image_name": filename,
+                        "status": "SUCCESS",
+                        "cached": is_cached,
+                        "image_processing_times": {
+                            "preprocessing_ms": round(
+                                individual_preprocessing * 1000, 2
+                            ),
+                            "inference_ms": round(individual_inference * 1000, 2),
+                            "total_ms": round(individual_time * 1000, 2),
+                        },
+                        "result": self._build_classification_result(
+                            classification_result.get("prediction", {}),
+                            image.shape[:2],
+                            (500, 500),  # Assume processed size
+                        ),
+                    }
+                else:
+                    # Failed processing
+                    result_entry = {
+                        "image_index": i,
+                        "image_name": filename,
+                        "status": "FAILED",
+                        "cached": False,
+                        "error": classification_result.get("error", "Unknown error"),
+                    }
+
+                results.append(result_entry)
+
+            response["results"] = results
 
             return jsonify(response)
 
@@ -1111,8 +1499,53 @@ def main():
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Server host")
     parser.add_argument("--port", type=int, default=5000, help="Server port")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument(
+        "--max-batch-size",
+        type=int,
+        default=100,
+        help="Maximum number of images allowed in a batch request",
+    )
+
+    # Redis configuration arguments (override config file)
+    parser.add_argument(
+        "--redis-enabled",
+        type=lambda x: x.lower() == "true",
+        default=None,
+        help="Enable Redis caching (true/false)",
+    )
+    parser.add_argument("--redis-host", type=str, help="Redis host")
+    parser.add_argument("--redis-port", type=int, help="Redis port")
+    parser.add_argument("--redis-db", type=int, help="Redis database number")
+    parser.add_argument("--redis-password", type=str, help="Redis password")
+    parser.add_argument("--redis-ttl", type=int, help="Redis TTL in seconds")
 
     args = parser.parse_args()
+
+    # Load Redis configuration from classifier config file
+    redis_config = {}
+    if args.classifier_config and os.path.exists(args.classifier_config):
+        try:
+            import yaml
+
+            with open(args.classifier_config, "r") as f:
+                config = yaml.safe_load(f)
+                redis_config = config.get("redis", {})
+        except Exception as e:
+            print(f"Warning: Could not load Redis config from file: {e}")
+
+    # Override with command-line arguments if provided
+    if args.redis_enabled is not None:
+        redis_config["enabled"] = args.redis_enabled
+    if args.redis_host:
+        redis_config["host"] = args.redis_host
+    if args.redis_port:
+        redis_config["port"] = args.redis_port
+    if args.redis_db is not None:
+        redis_config["db"] = args.redis_db
+    if args.redis_password:
+        redis_config["password"] = args.redis_password
+    if args.redis_ttl:
+        redis_config["ttl"] = args.redis_ttl
 
     # Create server and run
     server = FundusInferenceServer(
@@ -1121,6 +1554,8 @@ def main():
         host=args.host,
         port=args.port,
         debug=args.debug,
+        max_batch_size=args.max_batch_size,
+        redis_config=redis_config,
     )
 
     server.run()

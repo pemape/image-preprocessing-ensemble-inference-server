@@ -51,3 +51,15 @@ batch_processing:
   enabled: true
   max_batch_size: 4
   parallel_models: true
+
+# Redis Cache Configuration (Optional)
+# If enabled=true but Redis is not available, server will continue without caching
+
+redis:
+  enabled: true # Set to true to enable Redis caching
+  host: localhost
+  port: 6379
+  db: 0
+  password: null # Set if Redis requires authentication
+  ttl: 86400 # Time-to-live in seconds (24 hours)
+  key_prefix: fundus_inference
