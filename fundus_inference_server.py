@@ -640,9 +640,11 @@ class FundusInferenceServer:
             self.stats["preprocessing_requests"] += 1
 
             # Get image from request
-            image = self._get_image_from_request(request)
-            if image is None:
+            image_data = self._get_image_from_request(request)
+            if image_data is None:
                 return jsonify({"error": "No valid image provided"}), 400
+
+            image, _ = image_data
 
             # Process image
             start_time = time.time()
@@ -751,23 +753,11 @@ class FundusInferenceServer:
                 )
 
             # Get image from request and extract filename
-
-            # TODO:
-            # image_data = self._get_image_from_request(request)
-
-            file = request.files.get("image")
-            if not file or file.filename == "":
+            image_data = self._get_image_from_request(request)
+            if not image_data:
                 return jsonify({"error": "No valid image provided"}), 400
 
-            image_filename = file.filename
-
-            # Read image
-            image_bytes = file.read()
-            nparr = np.frombuffer(image_bytes, np.uint8)
-            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-            if image is None:
-                return jsonify({"error": "Failed to decode image"}), 400
+            image, image_filename = image_data
 
             # Get model configuration for cache key
             if self.classifier:
@@ -1366,7 +1356,7 @@ class FundusInferenceServer:
             self.logger.error(f"Batch processing error: {e}")
             return jsonify({"error": str(e)}), 500
 
-    def _get_image_from_request(self, req) -> Optional[np.ndarray]:
+    def _get_image_from_request(self, req) -> tuple:
         """Extract image from Flask request."""
         try:
             if "image" not in req.files:
@@ -1384,7 +1374,7 @@ class FundusInferenceServer:
             if image is None:
                 return None
 
-            return image
+            return (image, file.filename)
 
         except Exception as e:
             self.logger.error(f"Error extracting image from request: {e}")
