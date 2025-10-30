@@ -299,7 +299,8 @@ quality_control:
   # Input image validation
   input_validation:
     min_resolution: [224, 224] # Minimum acceptable input resolution
-    max_resolution: [4096, 4096] # Maximum acceptable input resolution
+    # max_resolution: [4096, 4096] # Maximum acceptable input resolution
+    max_resolution: [8192, 8192] # Maximum acceptable input resolution
     supported_formats: ["jpg", "jpeg", "png", "tiff", "bmp"]
     check_corruption: true # Check for image corruption
 

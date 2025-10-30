@@ -1,0 +1,1918 @@
+openapi: 3.0.3
+info:
+  contact:
+    name: API Support
+  description: |
+    REST API for fundus image preprocessing and diabetic retinopathy classification.
+
+    This API implements the preprocessing pipeline described in the paper:
+    "Ensemble of pre-processing techniques with CNN for diabetic retinopathy detection"
+    (IET Image Processing, 2024)
+
+    ## Features
+    - 5 preprocessing variants (Original, RGB-CLAHE, Ben Graham, Lab-CLAHE, MaxGreenGsc)
+    - Ensemble classification with EfficientNetB4 and Xception models
+    - Dynamic voting strategy selection (soft/hard)
+    - Batch processing support with Redis caching
+    - Real-time health monitoring
+    - Request tracking with unique IDs
+  license:
+    name: MIT
+  title: Fundus Image Processing and Classification API
+  version: 1.0.0
+servers:
+- description: Local development server
+  url: http://localhost:5000
+- description: Production server
+  url: http://0.0.0.0:5000
+tags:
+- description: Health checks and server information
+  name: Health & Info
+- description: Redis cache management endpoints
+  name: Cache Management
+- description: Image preprocessing endpoints
+  name: Preprocessing
+- description: Classification endpoints
+  name: Classification
+- description: Combined preprocessing and classification
+  name: Full Pipeline
+- description: Batch processing endpoints
+  name: Batch Processing
+paths:
+  /batch/preprocess:
+    post:
+      description: Preprocess multiple images in a single request
+      operationId: batch_preprocess
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/batchPreprocess_request"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchPreprocessResponse"
+          description: Batch preprocessing successful
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Invalid request
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Processing error
+      summary: Batch preprocessing
+      tags:
+      - Batch Processing
+      x-openapi-router-controller: ensemble_inference.controllers.batch_processing_controller
+  /batch/process:
+    post:
+      description: |
+        Process multiple images through complete pipeline (preprocess + classify).
+
+        **Batch Size Limit**: Maximum 100 images per request (configurable).
+
+        **Caching**: Each image is checked against Redis cache. Cache hits skip processing.
+        Response includes `cache_stats` showing hits/misses.
+      operationId: batch_process
+      parameters:
+      - description: Ensemble voting strategy for classification
+        examples:
+          soft:
+            summary: Soft voting (probability averaging)
+            value: soft
+          hard:
+            summary: Hard voting (majority vote)
+            value: hard
+        explode: true
+        in: query
+        name: voting_strategy
+        required: false
+        schema:
+          default: soft
+          enum:
+          - soft
+          - hard
+          type: string
+        style: form
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/batchPreprocess_request"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchProcessResponse"
+          description: Batch processing successful
+        "400":
+          content:
+            application/json:
+              examples:
+                batchSizeExceeded:
+                  value:
+                    error: Batch size exceeds maximum allowed limit
+                    images_provided: 150
+                    max_batch_size: 100
+                    suggestion: Please split your request into multiple batches of
+                      max 100 images each
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Invalid request or batch size exceeded
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Processing error
+      summary: Batch full processing
+      tags:
+      - Batch Processing
+      x-openapi-router-controller: ensemble_inference.controllers.batch_processing_controller
+  /cache/clear:
+    post:
+      description: Clear all or pattern-matched cached entries
+      operationId: clear_cache
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/clearCache_request"
+        required: false
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CacheClearResponse"
+          description: Cache cleared successfully
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Cache clear error
+      summary: Clear cache
+      tags:
+      - Cache Management
+      x-openapi-router-controller: ensemble_inference.controllers.cache_management_controller
+  /cache/health:
+    get:
+      description: Check Redis cache connection health
+      operationId: get_cache_health
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CacheHealthResponse"
+          description: Cache health status
+      summary: Get cache health
+      tags:
+      - Cache Management
+      x-openapi-router-controller: ensemble_inference.controllers.cache_management_controller
+  /cache/stats:
+    get:
+      description: "Retrieve Redis cache statistics including hits, misses, and hit\
+        \ rate"
+      operationId: get_cache_stats
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CacheStatsResponse"
+          description: Cache statistics
+      summary: Get cache statistics
+      tags:
+      - Cache Management
+      x-openapi-router-controller: ensemble_inference.controllers.cache_management_controller
+  /classify:
+    post:
+      description: Classify diabetic retinopathy from preprocessed image variants
+      operationId: classify_image
+      parameters:
+      - description: Ensemble voting strategy for classification
+        examples:
+          soft:
+            summary: Soft voting (probability averaging)
+            value: soft
+          hard:
+            summary: Hard voting (majority vote)
+            value: hard
+        explode: true
+        in: query
+        name: voting_strategy
+        required: false
+        schema:
+          default: soft
+          enum:
+          - soft
+          - hard
+          type: string
+        style: form
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/classifyImage_request"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClassifyResponse"
+          description: Classification successful
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Invalid request or classification module not available
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Classification error
+      summary: Classify from preprocessed images
+      tags:
+      - Classification
+      x-openapi-router-controller: ensemble_inference.controllers.classification_controller
+  /config:
+    get:
+      description: Retrieve current server configuration
+      operationId: get_config
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResponse"
+          description: Configuration details
+      summary: Get configuration details
+      tags:
+      - Health & Info
+      x-openapi-router-controller: ensemble_inference.controllers.health_&_info_controller
+  /health:
+    get:
+      description: Check server health status and uptime
+      operationId: health_check
+      responses:
+        "200":
+          content:
+            application/json:
+              example:
+                status: healthy
+                timestamp: 1.73E9
+                uptime: 3600.5
+                modules:
+                  preprocessor: true
+                  classifier: true
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+          description: Server is healthy
+      summary: Health check
+      tags:
+      - Health & Info
+      x-openapi-router-controller: ensemble_inference.controllers.health_&_info_controller
+  /info:
+    get:
+      description: Retrieve detailed information about available modules and endpoints
+      operationId: get_info
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InfoResponse"
+          description: Server information
+      summary: Get server information
+      tags:
+      - Health & Info
+      x-openapi-router-controller: ensemble_inference.controllers.health_&_info_controller
+  /models:
+    get:
+      description: Retrieve information about loaded classification models
+      operationId: get_models
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelInfoResponse"
+          description: Model information
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Classification module not available
+      summary: Get model information
+      tags:
+      - Health & Info
+      x-openapi-router-controller: ensemble_inference.controllers.health_&_info_controller
+  /preprocess:
+    post:
+      description: Apply preprocessing pipeline to generate 5 image variants
+      operationId: preprocess_image
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/preprocessImage_request"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreprocessResponse"
+          description: Preprocessing successful
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Invalid request
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Processing error
+      summary: Preprocess a single image
+      tags:
+      - Preprocessing
+      x-openapi-router-controller: ensemble_inference.controllers.preprocessing_controller
+  /process:
+    post:
+      description: |
+        Complete pipeline from raw image to classification result.
+
+        **Single Image Only**: This endpoint accepts exactly ONE image.
+        Use `/batch/process` for multiple images.
+
+        **Caching**: Results are cached with Redis based on image hash and model configuration.
+        Cached responses return near-instant results with `cached=true` indicator.
+      operationId: full_process
+      parameters:
+      - description: Ensemble voting strategy for classification
+        examples:
+          soft:
+            summary: Soft voting (probability averaging)
+            value: soft
+          hard:
+            summary: Hard voting (majority vote)
+            value: hard
+        explode: true
+        in: query
+        name: voting_strategy
+        required: false
+        schema:
+          default: soft
+          enum:
+          - soft
+          - hard
+          type: string
+        style: form
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/fullProcess_request"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessResponse"
+          description: Processing successful
+        "400":
+          content:
+            application/json:
+              examples:
+                multipleImages:
+                  value:
+                    error: Single image endpoint accepts only one image. Use /batch/process
+                      for multiple images.
+                    images_provided: 3
+                    max_allowed: 1
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: "Invalid request (e.g., multiple images provided)"
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+          description: Processing error
+      summary: Full pipeline (preprocess + classify)
+      tags:
+      - Full Pipeline
+      x-openapi-router-controller: ensemble_inference.controllers.full_pipeline_controller
+  /stats:
+    get:
+      description: Retrieve server usage statistics and metrics
+      operationId: get_stats
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatsResponse"
+          description: Server statistics
+      summary: Get server statistics
+      tags:
+      - Health & Info
+      x-openapi-router-controller: ensemble_inference.controllers.health_&_info_controller
+components:
+  parameters:
+    VotingStrategy:
+      description: Ensemble voting strategy for classification
+      examples:
+        soft:
+          summary: Soft voting (probability averaging)
+          value: soft
+        hard:
+          summary: Hard voting (majority vote)
+          value: hard
+      explode: true
+      in: query
+      name: voting_strategy
+      required: false
+      schema:
+        default: soft
+        enum:
+        - soft
+        - hard
+        type: string
+      style: form
+  schemas:
+    HealthResponse:
+      example:
+        modules:
+          preprocessor: true
+          classifier: true
+        status: healthy
+        timestamp: 1730000000
+        uptime: 3600.5
+      properties:
+        status:
+          example: healthy
+          title: status
+          type: string
+        timestamp:
+          example: 1730000000
+          format: float
+          title: timestamp
+          type: number
+        uptime:
+          description: Server uptime in seconds
+          example: 3600.5
+          format: float
+          title: uptime
+          type: number
+        modules:
+          $ref: "#/components/schemas/HealthResponse_modules"
+      title: HealthResponse
+      type: object
+    InfoResponse:
+      example:
+        endpoints:
+          key: endpoints
+        name: Fundus Image Processing and Classification Server
+        paper_reference: https://openapi-generator.tech
+        version: 1.0.0
+        modules:
+          preprocessing:
+            clipping_methods: 6
+            variants: 0
+            enabled: true
+          classification:
+            models: 1
+            voting_strategy: soft
+            enabled: true
+      properties:
+        name:
+          example: Fundus Image Processing and Classification Server
+          title: name
+          type: string
+        version:
+          example: 1.0.0
+          title: version
+          type: string
+        modules:
+          $ref: "#/components/schemas/InfoResponse_modules"
+        endpoints:
+          additionalProperties:
+            type: string
+          title: endpoints
+          type: object
+        paper_reference:
+          format: uri
+          title: paper_reference
+          type: string
+      title: InfoResponse
+      type: object
+    StatsResponse:
+      example:
+        classification_requests: 5
+        requests_per_minute: 2.302136
+        uptime_seconds: 0.8008282
+        preprocessing_requests: 1
+        total_requests: 6
+        uptime_formatted: 1h 0m 0s
+        errors: 5
+      properties:
+        uptime_seconds:
+          format: float
+          title: uptime_seconds
+          type: number
+        uptime_formatted:
+          example: 1h 0m 0s
+          title: uptime_formatted
+          type: string
+        total_requests:
+          title: total_requests
+          type: integer
+        preprocessing_requests:
+          title: preprocessing_requests
+          type: integer
+        classification_requests:
+          title: classification_requests
+          type: integer
+        errors:
+          title: errors
+          type: integer
+        requests_per_minute:
+          format: float
+          title: requests_per_minute
+          type: number
+      title: StatsResponse
+      type: object
+    ConfigResponse:
+      example:
+        preprocessing:
+          parallel_processing: true
+          target_resolution:
+          - 500
+          - 500
+          normalize_pixels: true
+          black_border_clipping: true
+        classification:
+          voting_strategy: soft
+          force_cpu: true
+          confidence_threshold: 0.8008282
+      properties:
+        preprocessing:
+          $ref: "#/components/schemas/ConfigResponse_preprocessing"
+        classification:
+          $ref: "#/components/schemas/ConfigResponse_classification"
+      title: ConfigResponse
+      type: object
+    ModelInfoResponse:
+      example:
+        models:
+        - num_classes: 0
+          dataset: APTOS5
+          preprocessing_variant: original
+          model_path: model_path
+          architecture: efficientnetb4
+        - num_classes: 0
+          dataset: APTOS5
+          preprocessing_variant: original
+          model_path: model_path
+          architecture: efficientnetb4
+        voting_strategy: soft
+        device: cuda
+        total_models: 6
+      properties:
+        models:
+          items:
+            $ref: "#/components/schemas/ModelInfoResponse_models_inner"
+          title: models
+          type: array
+        voting_strategy:
+          enum:
+          - soft
+          - hard
+          title: voting_strategy
+          type: string
+        device:
+          example: cuda
+          title: device
+          type: string
+        total_models:
+          title: total_models
+          type: integer
+      title: ModelInfoResponse
+      type: object
+    PreprocessResponse:
+      example:
+        metadata:
+          processed_size:
+          - 1
+          - 1
+          variant_count: 5
+          original_size:
+          - 6
+          - 6
+        processing_time_seconds: 0.8008282
+        variants:
+          original: original
+          rgb_clahe: rgb_clahe
+          lab_clahe: lab_clahe
+          max_green_gsc: max_green_gsc
+          ben_graham: ben_graham
+        status: success
+      properties:
+        status:
+          example: success
+          title: status
+          type: string
+        processing_time_seconds:
+          format: float
+          title: processing_time_seconds
+          type: number
+        variants:
+          $ref: "#/components/schemas/PreprocessResponse_variants"
+        metadata:
+          $ref: "#/components/schemas/PreprocessResponse_metadata"
+      title: PreprocessResponse
+      type: object
+    PredictionResult:
+      example:
+        No DR: 0.85
+        voting_strategy: soft
+        Mild DR: 0.1
+        predicted_class: No DR
+        confidence: 0.85
+        model_info:
+          architectures:
+          - architectures
+          - architectures
+          voting_strategy: voting_strategy
+          ensemble_size: 6
+          datasets:
+          - datasets
+          - datasets
+        ensemble_size: 5
+        Moderate DR: 0.03
+        Proliferative DR: 0.01
+        Severe DR: 0.01
+      properties:
+        No DR:
+          example: 0.85
+          format: float
+          title: No DR
+          type: number
+        Mild DR:
+          example: 0.1
+          format: float
+          title: Mild DR
+          type: number
+        Moderate DR:
+          example: 0.03
+          format: float
+          title: Moderate DR
+          type: number
+        Severe DR:
+          example: 0.01
+          format: float
+          title: Severe DR
+          type: number
+        Proliferative DR:
+          example: 0.01
+          format: float
+          title: Proliferative DR
+          type: number
+        predicted_class:
+          example: No DR
+          title: predicted_class
+          type: string
+        confidence:
+          example: 0.85
+          format: float
+          title: confidence
+          type: number
+        ensemble_size:
+          example: 5
+          title: ensemble_size
+          type: integer
+        voting_strategy:
+          enum:
+          - soft
+          - hard
+          example: soft
+          title: voting_strategy
+          type: string
+        model_info:
+          $ref: "#/components/schemas/PredictionResult_model_info"
+      title: PredictionResult
+      type: object
+    ClassifyResponse:
+      example:
+        classification_time_seconds: 0.8008282
+        prediction:
+          No DR: 0.85
+          voting_strategy: soft
+          Mild DR: 0.1
+          predicted_class: No DR
+          confidence: 0.85
+          model_info:
+            architectures:
+            - architectures
+            - architectures
+            voting_strategy: voting_strategy
+            ensemble_size: 6
+            datasets:
+            - datasets
+            - datasets
+          ensemble_size: 5
+          Moderate DR: 0.03
+          Proliferative DR: 0.01
+          Severe DR: 0.01
+        status: success
+      properties:
+        status:
+          example: success
+          title: status
+          type: string
+        classification_time_seconds:
+          format: float
+          title: classification_time_seconds
+          type: number
+        prediction:
+          $ref: "#/components/schemas/PredictionResult"
+      title: ClassifyResponse
+      type: object
+    ProcessResponse:
+      description: Response for single image processing (/process endpoint)
+      example:
+        result:
+          class_probabilities:
+          - probability: 0.85
+            id: DR_0
+            label: No Diabetic Retinopathy
+          - probability: 0.85
+            id: DR_0
+            label: No Diabetic Retinopathy
+          - probability: 0.85
+            id: DR_0
+            label: No Diabetic Retinopathy
+          - probability: 0.85
+            id: DR_0
+            label: No Diabetic Retinopathy
+          - probability: 0.85
+            id: DR_0
+            label: No Diabetic Retinopathy
+          confidence_score: 0.85
+          predicted_class_id: DR_0
+          predicted_class_label: No Diabetic Retinopathy
+          diagnosis_certainty: HIGH
+        image_name: fundus_001.jpg
+        metadata:
+          image_properties:
+            original_height_px: 2304
+            original_width_px: 3456
+            processed_width_px: 500
+            processed_height_px: 500
+          model_configuration:
+            model_architecture: EfficientNetB4
+            voting_strategy: Soft-Voting
+            ensemble_size: 5
+            trained_datasets:
+            - APTOS-2019-DR-Classification
+          version_info:
+            model_version: 20251030-v2.1
+            api_version: 1.0.0
+        cache_hit: false
+        timestamp_utc: 2025-10-30T14:30:22.123Z
+        cached: false
+        processing_times:
+          per_image_ms: 1137.8
+          "00_preprocessing_ms": 245.5
+          "01_inference_ms": 892.3
+          total_ms: 1137.8
+        request_id: REQ-20251030143022-a1b2c3d4
+        preprocessed_images:
+          key: preprocessed_images
+        status: SUCCESS
+      properties:
+        status:
+          enum:
+          - SUCCESS
+          example: SUCCESS
+          title: status
+          type: string
+        request_id:
+          description: Unique request identifier
+          example: REQ-20251030143022-a1b2c3d4
+          title: request_id
+          type: string
+        timestamp_utc:
+          description: UTC timestamp in ISO 8601 format
+          example: 2025-10-30T14:30:22.123Z
+          format: date-time
+          title: timestamp_utc
+          type: string
+        image_name:
+          example: fundus_001.jpg
+          title: image_name
+          type: string
+        cached:
+          description: Whether result was retrieved from cache
+          example: false
+          title: cached
+          type: boolean
+        cache_hit:
+          description: Cache hit indicator
+          example: false
+          title: cache_hit
+          type: boolean
+        processing_times:
+          $ref: "#/components/schemas/ProcessingTimes"
+        metadata:
+          $ref: "#/components/schemas/ProcessResponse_metadata"
+        result:
+          $ref: "#/components/schemas/ClassificationResult"
+        preprocessed_images:
+          additionalProperties:
+            format: byte
+            type: string
+          description: Optional - included only if include_images=true
+          title: preprocessed_images
+          type: object
+      required:
+      - cache_hit
+      - cached
+      - image_name
+      - metadata
+      - processing_times
+      - request_id
+      - status
+      - timestamp_utc
+      title: ProcessResponse
+      type: object
+    BatchPreprocessResponse:
+      example:
+        batch_size: 0
+        processing_time_seconds: 1.4658129
+        results:
+        - image_name: fundus_001.jpg
+          image_index: 5
+          variants:
+            key: variants
+          error: error
+          status: success
+        - image_name: fundus_001.jpg
+          image_index: 5
+          variants:
+            key: variants
+          error: error
+          status: success
+        status: success
+        successful: 6
+      properties:
+        status:
+          example: success
+          title: status
+          type: string
+        batch_size:
+          title: batch_size
+          type: integer
+        successful:
+          title: successful
+          type: integer
+        processing_time_seconds:
+          format: float
+          title: processing_time_seconds
+          type: number
+        results:
+          items:
+            $ref: "#/components/schemas/BatchPreprocessResponse_results_inner"
+          title: results
+          type: array
+      title: BatchPreprocessResponse
+      type: object
+    BatchDetails:
+      example:
+        processed_failure: 2
+        processed_successfully: 48
+        batch_size: 50
+      properties:
+        batch_size:
+          example: 50
+          title: batch_size
+          type: integer
+        processed_successfully:
+          example: 48
+          title: processed_successfully
+          type: integer
+        processed_failure:
+          example: 2
+          title: processed_failure
+          type: integer
+      required:
+      - batch_size
+      - processed_failure
+      - processed_successfully
+      title: BatchDetails
+      type: object
+    CacheStats:
+      example:
+        cache_misses: 15
+        cache_hits: 35
+        cached_percentage: 70.0
+      properties:
+        cache_hits:
+          example: 35
+          title: cache_hits
+          type: integer
+        cache_misses:
+          example: 15
+          title: cache_misses
+          type: integer
+        cached_percentage:
+          example: 70.0
+          format: float
+          title: cached_percentage
+          type: number
+      required:
+      - cache_hits
+      - cache_misses
+      - cached_percentage
+      title: CacheStats
+      type: object
+    BatchImageResult:
+      example:
+        result:
+          class_probabilities:
+          - probability: 0.85
+            id: DR_0
+            label: No Diabetic Retinopathy
+          - probability: 0.85
+            id: DR_0
+            label: No Diabetic Retinopathy
+          - probability: 0.85
+            id: DR_0
+            label: No Diabetic Retinopathy
+          - probability: 0.85
+            id: DR_0
+            label: No Diabetic Retinopathy
+          - probability: 0.85
+            id: DR_0
+            label: No Diabetic Retinopathy
+          confidence_score: 0.85
+          predicted_class_id: DR_0
+          predicted_class_label: No Diabetic Retinopathy
+          diagnosis_certainty: HIGH
+        image_name: fundus_001.jpg
+        cached: false
+        image_index: 0
+        image_processing_times:
+          total_ms: 1137.8
+          preprocessing_ms: 245.5
+          inference_ms: 892.3
+        error: Classification failed
+        status: SUCCESS
+      properties:
+        image_index:
+          example: 0
+          title: image_index
+          type: integer
+        image_name:
+          example: fundus_001.jpg
+          title: image_name
+          type: string
+        status:
+          enum:
+          - SUCCESS
+          - FAILED
+          example: SUCCESS
+          title: status
+          type: string
+        cached:
+          example: false
+          title: cached
+          type: boolean
+        image_processing_times:
+          $ref: "#/components/schemas/BatchImageResult_image_processing_times"
+        result:
+          $ref: "#/components/schemas/ClassificationResult"
+        error:
+          description: Present only if status is FAILED
+          example: Classification failed
+          title: error
+          type: string
+      required:
+      - image_index
+      - image_name
+      - status
+      title: BatchImageResult
+      type: object
+    BatchProcessResponse:
+      description: Response for batch image processing (/batch/process endpoint)
+      example:
+        cache_stats:
+          cache_misses: 15
+          cache_hits: 35
+          cached_percentage: 70.0
+        total_processing_times:
+          per_image_ms: 341.34
+          total_ms: 17067.0
+          preprocessing_ms: 3682.5
+          inference_ms: 13384.5
+        metadata:
+          model_configuration:
+            model_architecture: EfficientNetB4
+            voting_strategy: Soft-Voting
+            ensemble_size: 5
+            trained_datasets:
+            - APTOS-2019-DR-Classification
+          version_info:
+            model_version: 20251030-v2.1
+            api_version: 1.0.0
+        timestamp_utc: 2025-10-30T14:30:22.123Z
+        batch_details:
+          processed_failure: 2
+          processed_successfully: 48
+          batch_size: 50
+        request_id: BATCH-20251030143022-a1b2c3d4
+        results:
+        - result:
+            class_probabilities:
+            - probability: 0.85
+              id: DR_0
+              label: No Diabetic Retinopathy
+            - probability: 0.85
+              id: DR_0
+              label: No Diabetic Retinopathy
+            - probability: 0.85
+              id: DR_0
+              label: No Diabetic Retinopathy
+            - probability: 0.85
+              id: DR_0
+              label: No Diabetic Retinopathy
+            - probability: 0.85
+              id: DR_0
+              label: No Diabetic Retinopathy
+            confidence_score: 0.85
+            predicted_class_id: DR_0
+            predicted_class_label: No Diabetic Retinopathy
+            diagnosis_certainty: HIGH
+          image_name: fundus_001.jpg
+          cached: false
+          image_index: 0
+          image_processing_times:
+            total_ms: 1137.8
+            preprocessing_ms: 245.5
+            inference_ms: 892.3
+          error: Classification failed
+          status: SUCCESS
+        - result:
+            class_probabilities:
+            - probability: 0.85
+              id: DR_0
+              label: No Diabetic Retinopathy
+            - probability: 0.85
+              id: DR_0
+              label: No Diabetic Retinopathy
+            - probability: 0.85
+              id: DR_0
+              label: No Diabetic Retinopathy
+            - probability: 0.85
+              id: DR_0
+              label: No Diabetic Retinopathy
+            - probability: 0.85
+              id: DR_0
+              label: No Diabetic Retinopathy
+            confidence_score: 0.85
+            predicted_class_id: DR_0
+            predicted_class_label: No Diabetic Retinopathy
+            diagnosis_certainty: HIGH
+          image_name: fundus_001.jpg
+          cached: false
+          image_index: 0
+          image_processing_times:
+            total_ms: 1137.8
+            preprocessing_ms: 245.5
+            inference_ms: 892.3
+          error: Classification failed
+          status: SUCCESS
+        status: SUCCESS
+      properties:
+        status:
+          enum:
+          - SUCCESS
+          example: SUCCESS
+          title: status
+          type: string
+        request_id:
+          description: Unique batch request identifier
+          example: BATCH-20251030143022-a1b2c3d4
+          title: request_id
+          type: string
+        timestamp_utc:
+          example: 2025-10-30T14:30:22.123Z
+          format: date-time
+          title: timestamp_utc
+          type: string
+        batch_details:
+          $ref: "#/components/schemas/BatchDetails"
+        cache_stats:
+          $ref: "#/components/schemas/CacheStats"
+        total_processing_times:
+          $ref: "#/components/schemas/BatchProcessResponse_total_processing_times"
+        metadata:
+          $ref: "#/components/schemas/BatchProcessResponse_metadata"
+        results:
+          items:
+            $ref: "#/components/schemas/BatchImageResult"
+          title: results
+          type: array
+      required:
+      - batch_details
+      - cache_stats
+      - metadata
+      - request_id
+      - results
+      - status
+      - timestamp_utc
+      - total_processing_times
+      title: BatchProcessResponse
+      type: object
+    CacheStatsResponse:
+      example:
+        connected: true
+        hits: 8945
+        hit_rate: 0.854
+        misses: 1523
+        memory_usage: 45.2 MB
+        enabled: true
+        total_keys: 1523
+      properties:
+        enabled:
+          example: true
+          title: enabled
+          type: boolean
+        connected:
+          example: true
+          title: connected
+          type: boolean
+        total_keys:
+          example: 1523
+          title: total_keys
+          type: integer
+        memory_usage:
+          example: 45.2 MB
+          title: memory_usage
+          type: string
+        hits:
+          example: 8945
+          title: hits
+          type: integer
+        misses:
+          example: 1523
+          title: misses
+          type: integer
+        hit_rate:
+          example: 0.854
+          format: float
+          title: hit_rate
+          type: number
+      title: CacheStatsResponse
+      type: object
+    CacheHealthResponse:
+      example:
+        connected: true
+        response_time_ms: 2.5
+        enabled: true
+        status: healthy
+      properties:
+        enabled:
+          example: true
+          title: enabled
+          type: boolean
+        connected:
+          example: true
+          title: connected
+          type: boolean
+        status:
+          enum:
+          - healthy
+          - unhealthy
+          - disabled
+          example: healthy
+          title: status
+          type: string
+        response_time_ms:
+          example: 2.5
+          format: float
+          title: response_time_ms
+          type: number
+      title: CacheHealthResponse
+      type: object
+    CacheClearResponse:
+      example:
+        pattern: all
+        message: Cleared 523 cached entries
+        deleted_count: 523
+        status: success
+      properties:
+        status:
+          example: success
+          title: status
+          type: string
+        message:
+          example: Cleared 523 cached entries
+          title: message
+          type: string
+        deleted_count:
+          example: 523
+          title: deleted_count
+          type: integer
+        pattern:
+          example: all
+          title: pattern
+          type: string
+      title: CacheClearResponse
+      type: object
+    ClassProbability:
+      description: Probability for a single DR class
+      example:
+        probability: 0.85
+        id: DR_0
+        label: No Diabetic Retinopathy
+      properties:
+        id:
+          description: Class ID
+          enum:
+          - DR_0
+          - DR_1
+          - DR_2
+          - DR_3
+          - DR_4
+          example: DR_0
+          title: id
+          type: string
+        label:
+          description: Full class label
+          example: No Diabetic Retinopathy
+          title: label
+          type: string
+        probability:
+          example: 0.85
+          format: float
+          maximum: 1
+          minimum: 0
+          title: probability
+          type: number
+      required:
+      - id
+      - label
+      - probability
+      title: ClassProbability
+      type: object
+    ClassificationResult:
+      description: Structured classification result
+      example:
+        class_probabilities:
+        - probability: 0.85
+          id: DR_0
+          label: No Diabetic Retinopathy
+        - probability: 0.85
+          id: DR_0
+          label: No Diabetic Retinopathy
+        - probability: 0.85
+          id: DR_0
+          label: No Diabetic Retinopathy
+        - probability: 0.85
+          id: DR_0
+          label: No Diabetic Retinopathy
+        - probability: 0.85
+          id: DR_0
+          label: No Diabetic Retinopathy
+        confidence_score: 0.85
+        predicted_class_id: DR_0
+        predicted_class_label: No Diabetic Retinopathy
+        diagnosis_certainty: HIGH
+      properties:
+        predicted_class_id:
+          enum:
+          - DR_0
+          - DR_1
+          - DR_2
+          - DR_3
+          - DR_4
+          example: DR_0
+          title: predicted_class_id
+          type: string
+        predicted_class_label:
+          example: No Diabetic Retinopathy
+          title: predicted_class_label
+          type: string
+        confidence_score:
+          example: 0.85
+          format: float
+          maximum: 1
+          minimum: 0
+          title: confidence_score
+          type: number
+        diagnosis_certainty:
+          description: |
+            Certainty level based on confidence:
+            - HIGH: >= 0.75
+            - MEDIUM: >= 0.50
+            - LOW: < 0.50
+          enum:
+          - HIGH
+          - MEDIUM
+          - LOW
+          example: HIGH
+          title: diagnosis_certainty
+          type: string
+        class_probabilities:
+          description: Probabilities for all DR classes
+          items:
+            $ref: "#/components/schemas/ClassProbability"
+          maxItems: 5
+          minItems: 5
+          title: class_probabilities
+          type: array
+      required:
+      - class_probabilities
+      - confidence_score
+      - diagnosis_certainty
+      - predicted_class_id
+      - predicted_class_label
+      title: ClassificationResult
+      type: object
+    ProcessingTimes:
+      example:
+        per_image_ms: 1137.8
+        "00_preprocessing_ms": 245.5
+        "01_inference_ms": 892.3
+        total_ms: 1137.8
+      properties:
+        "00_preprocessing_ms":
+          description: Preprocessing time in milliseconds
+          example: 245.5
+          format: float
+          title: 00_preprocessing_ms
+          type: number
+        "01_inference_ms":
+          description: Inference time in milliseconds
+          example: 892.3
+          format: float
+          title: 01_inference_ms
+          type: number
+        total_ms:
+          description: Total processing time in milliseconds
+          example: 1137.8
+          format: float
+          title: total_ms
+          type: number
+        per_image_ms:
+          description: Average time per image in milliseconds
+          example: 1137.8
+          format: float
+          title: per_image_ms
+          type: number
+      required:
+      - 00_preprocessing_ms
+      - 01_inference_ms
+      - per_image_ms
+      - total_ms
+      title: ProcessingTimes
+      type: object
+    ImageProperties:
+      example:
+        original_height_px: 2304
+        original_width_px: 3456
+        processed_width_px: 500
+        processed_height_px: 500
+      properties:
+        original_width_px:
+          example: 3456
+          title: original_width_px
+          type: integer
+        original_height_px:
+          example: 2304
+          title: original_height_px
+          type: integer
+        processed_width_px:
+          example: 500
+          title: processed_width_px
+          type: integer
+        processed_height_px:
+          example: 500
+          title: processed_height_px
+          type: integer
+      required:
+      - original_height_px
+      - original_width_px
+      - processed_height_px
+      - processed_width_px
+      title: ImageProperties
+      type: object
+    VersionInfo:
+      example:
+        model_version: 20251030-v2.1
+        api_version: 1.0.0
+      properties:
+        api_version:
+          example: 1.0.0
+          title: api_version
+          type: string
+        model_version:
+          example: 20251030-v2.1
+          title: model_version
+          type: string
+      required:
+      - api_version
+      - model_version
+      title: VersionInfo
+      type: object
+    ModelConfiguration:
+      example:
+        model_architecture: EfficientNetB4
+        voting_strategy: Soft-Voting
+        ensemble_size: 5
+        trained_datasets:
+        - APTOS-2019-DR-Classification
+      properties:
+        model_architecture:
+          example: EfficientNetB4
+          title: model_architecture
+          type: string
+        ensemble_size:
+          example: 5
+          title: ensemble_size
+          type: integer
+        trained_datasets:
+          example:
+          - APTOS-2019-DR-Classification
+          items:
+            type: string
+          title: trained_datasets
+          type: array
+        voting_strategy:
+          example: Soft-Voting
+          title: voting_strategy
+          type: string
+      required:
+      - ensemble_size
+      - model_architecture
+      - trained_datasets
+      - voting_strategy
+      title: ModelConfiguration
+      type: object
+    ErrorResponse:
+      example:
+        error: Invalid voting_strategy 'invalid'. Must be 'soft' or 'hard'
+      properties:
+        error:
+          example: Invalid voting_strategy 'invalid'. Must be 'soft' or 'hard'
+          title: error
+          type: string
+      required:
+      - error
+      title: ErrorResponse
+      type: object
+    clearCache_request:
+      properties:
+        pattern:
+          description: Optional pattern to match keys for deletion
+          example: '*.png'
+          title: pattern
+          type: string
+      title: clearCache_request
+      type: object
+    preprocessImage_request:
+      properties:
+        image:
+          description: "Fundus image file (JPEG, PNG, TIFF)"
+          format: binary
+          type: string
+      required:
+      - image
+      type: object
+    classifyImage_request:
+      properties:
+        variants:
+          additionalProperties:
+            format: byte
+            type: string
+          description: Base64-encoded preprocessed image variants
+          title: variants
+          type: object
+      required:
+      - variants
+      title: classifyImage_request
+      type: object
+    fullProcess_request:
+      properties:
+        image:
+          description: "Fundus image file (JPEG, PNG, TIFF) - **SINGLE IMAGE ONLY**"
+          format: binary
+          type: string
+        include_images:
+          default: "false"
+          description: Include preprocessed images in response (not cached if true)
+          enum:
+          - "true"
+          - "false"
+          type: string
+      required:
+      - image
+      type: object
+    batchPreprocess_request:
+      properties:
+        images:
+          description: Multiple fundus image files
+          items:
+            format: binary
+            type: string
+          type: array
+      required:
+      - images
+      type: object
+    HealthResponse_modules:
+      example:
+        preprocessor: true
+        classifier: true
+      properties:
+        preprocessor:
+          example: true
+          title: preprocessor
+          type: boolean
+        classifier:
+          example: true
+          title: classifier
+          type: boolean
+      title: HealthResponse_modules
+      type: object
+    InfoResponse_modules_preprocessing:
+      example:
+        clipping_methods: 6
+        variants: 0
+        enabled: true
+      properties:
+        enabled:
+          title: enabled
+          type: boolean
+        variants:
+          title: variants
+          type: integer
+        clipping_methods:
+          title: clipping_methods
+          type: integer
+      title: InfoResponse_modules_preprocessing
+      type: object
+    InfoResponse_modules_classification:
+      example:
+        models: 1
+        voting_strategy: soft
+        enabled: true
+      properties:
+        enabled:
+          title: enabled
+          type: boolean
+        models:
+          title: models
+          type: integer
+        voting_strategy:
+          enum:
+          - soft
+          - hard
+          title: voting_strategy
+          type: string
+      title: InfoResponse_modules_classification
+      type: object
+    InfoResponse_modules:
+      example:
+        preprocessing:
+          clipping_methods: 6
+          variants: 0
+          enabled: true
+        classification:
+          models: 1
+          voting_strategy: soft
+          enabled: true
+      properties:
+        preprocessing:
+          $ref: "#/components/schemas/InfoResponse_modules_preprocessing"
+        classification:
+          $ref: "#/components/schemas/InfoResponse_modules_classification"
+      title: InfoResponse_modules
+      type: object
+    ConfigResponse_preprocessing:
+      example:
+        parallel_processing: true
+        target_resolution:
+        - 500
+        - 500
+        normalize_pixels: true
+        black_border_clipping: true
+      properties:
+        target_resolution:
+          example:
+          - 500
+          - 500
+          items:
+            type: integer
+          title: target_resolution
+          type: array
+        normalize_pixels:
+          title: normalize_pixels
+          type: boolean
+        black_border_clipping:
+          title: black_border_clipping
+          type: boolean
+        parallel_processing:
+          title: parallel_processing
+          type: boolean
+      title: ConfigResponse_preprocessing
+      type: object
+    ConfigResponse_classification:
+      example:
+        voting_strategy: soft
+        force_cpu: true
+        confidence_threshold: 0.8008282
+      properties:
+        voting_strategy:
+          enum:
+          - soft
+          - hard
+          title: voting_strategy
+          type: string
+        force_cpu:
+          title: force_cpu
+          type: boolean
+        confidence_threshold:
+          format: float
+          title: confidence_threshold
+          type: number
+      title: ConfigResponse_classification
+      type: object
+    ModelInfoResponse_models_inner:
+      example:
+        num_classes: 0
+        dataset: APTOS5
+        preprocessing_variant: original
+        model_path: model_path
+        architecture: efficientnetb4
+      properties:
+        architecture:
+          example: efficientnetb4
+          title: architecture
+          type: string
+        dataset:
+          example: APTOS5
+          title: dataset
+          type: string
+        preprocessing_variant:
+          example: original
+          title: preprocessing_variant
+          type: string
+        model_path:
+          title: model_path
+          type: string
+        num_classes:
+          title: num_classes
+          type: integer
+      title: ModelInfoResponse_models_inner
+      type: object
+    PreprocessResponse_variants:
+      description: Base64-encoded preprocessed image variants
+      example:
+        original: original
+        rgb_clahe: rgb_clahe
+        lab_clahe: lab_clahe
+        max_green_gsc: max_green_gsc
+        ben_graham: ben_graham
+      properties:
+        original:
+          format: byte
+          title: original
+          type: string
+        rgb_clahe:
+          format: byte
+          title: rgb_clahe
+          type: string
+        ben_graham:
+          format: byte
+          title: ben_graham
+          type: string
+        lab_clahe:
+          format: byte
+          title: lab_clahe
+          type: string
+        max_green_gsc:
+          format: byte
+          title: max_green_gsc
+          type: string
+      title: PreprocessResponse_variants
+      type: object
+    PreprocessResponse_metadata:
+      example:
+        processed_size:
+        - 1
+        - 1
+        variant_count: 5
+        original_size:
+        - 6
+        - 6
+      properties:
+        original_size:
+          items:
+            type: integer
+          title: original_size
+          type: array
+        processed_size:
+          items:
+            type: integer
+          title: processed_size
+          type: array
+        variant_count:
+          title: variant_count
+          type: integer
+      title: PreprocessResponse_metadata
+      type: object
+    PredictionResult_model_info:
+      example:
+        architectures:
+        - architectures
+        - architectures
+        voting_strategy: voting_strategy
+        ensemble_size: 6
+        datasets:
+        - datasets
+        - datasets
+      properties:
+        ensemble_size:
+          title: ensemble_size
+          type: integer
+        architectures:
+          items:
+            type: string
+          title: architectures
+          type: array
+        datasets:
+          items:
+            type: string
+          title: datasets
+          type: array
+        voting_strategy:
+          title: voting_strategy
+          type: string
+      title: PredictionResult_model_info
+      type: object
+    ProcessResponse_metadata:
+      example:
+        image_properties:
+          original_height_px: 2304
+          original_width_px: 3456
+          processed_width_px: 500
+          processed_height_px: 500
+        model_configuration:
+          model_architecture: EfficientNetB4
+          voting_strategy: Soft-Voting
+          ensemble_size: 5
+          trained_datasets:
+          - APTOS-2019-DR-Classification
+        version_info:
+          model_version: 20251030-v2.1
+          api_version: 1.0.0
+      properties:
+        image_properties:
+          $ref: "#/components/schemas/ImageProperties"
+        version_info:
+          $ref: "#/components/schemas/VersionInfo"
+        model_configuration:
+          $ref: "#/components/schemas/ModelConfiguration"
+      required:
+      - image_properties
+      - version_info
+      title: ProcessResponse_metadata
+      type: object
+    BatchPreprocessResponse_results_inner:
+      example:
+        image_name: fundus_001.jpg
+        image_index: 5
+        variants:
+          key: variants
+        error: error
+        status: success
+      properties:
+        status:
+          enum:
+          - success
+          - failed
+          title: status
+          type: string
+        image_index:
+          title: image_index
+          type: integer
+        image_name:
+          example: fundus_001.jpg
+          title: image_name
+          type: string
+        variants:
+          additionalProperties:
+            format: byte
+            type: string
+          title: variants
+          type: object
+        error:
+          description: Present only if status is 'failed'
+          title: error
+          type: string
+      title: BatchPreprocessResponse_results_inner
+      type: object
+    BatchImageResult_image_processing_times:
+      example:
+        total_ms: 1137.8
+        preprocessing_ms: 245.5
+        inference_ms: 892.3
+      properties:
+        preprocessing_ms:
+          example: 245.5
+          format: float
+          title: preprocessing_ms
+          type: number
+        inference_ms:
+          example: 892.3
+          format: float
+          title: inference_ms
+          type: number
+        total_ms:
+          example: 1137.8
+          format: float
+          title: total_ms
+          type: number
+      title: BatchImageResult_image_processing_times
+      type: object
+    BatchProcessResponse_total_processing_times:
+      example:
+        per_image_ms: 341.34
+        total_ms: 17067.0
+        preprocessing_ms: 3682.5
+        inference_ms: 13384.5
+      properties:
+        preprocessing_ms:
+          example: 3682.5
+          format: float
+          title: preprocessing_ms
+          type: number
+        inference_ms:
+          example: 13384.5
+          format: float
+          title: inference_ms
+          type: number
+        total_ms:
+          example: 17067.0
+          format: float
+          title: total_ms
+          type: number
+        per_image_ms:
+          example: 341.34
+          format: float
+          title: per_image_ms
+          type: number
+      title: BatchProcessResponse_total_processing_times
+      type: object
+    BatchProcessResponse_metadata:
+      example:
+        model_configuration:
+          model_architecture: EfficientNetB4
+          voting_strategy: Soft-Voting
+          ensemble_size: 5
+          trained_datasets:
+          - APTOS-2019-DR-Classification
+        version_info:
+          model_version: 20251030-v2.1
+          api_version: 1.0.0
+      properties:
+        version_info:
+          $ref: "#/components/schemas/VersionInfo"
+        model_configuration:
+          $ref: "#/components/schemas/ModelConfiguration"
+      required:
+      - version_info
+      title: BatchProcessResponse_metadata
+      type: object

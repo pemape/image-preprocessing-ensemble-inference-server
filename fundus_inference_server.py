@@ -20,6 +20,9 @@ import argparse
 import uuid
 from datetime import datetime, timezone
 
+# Import generated OpenAPI models
+from ensemble_inference.models.processing_times import ProcessingTimes
+
 # Import our modules
 from fundus_preprocessor import FundusPreprocessor
 from diabetic_retinopathy_classifier import DiabeticRetinopathyClassifier
@@ -176,6 +179,61 @@ class FundusInferenceServer:
             4: {"id": "DR_4", "label": "Proliferative DR"},
         }
 
+    def _get_label_to_classifier_mapping(self) -> Dict[str, str]:
+        """
+        Get mapping from full labels to short classifier labels.
+
+        Returns:
+            Dictionary mapping full label to short label
+        """
+        return {
+            "No Diabetic Retinopathy": "No DR",
+            "Mild Non-Proliferative DR": "Mild DR",
+            "Moderate Non-Proliferative DR": "Moderate DR",
+            "Severe Non-Proliferative DR": "Severe DR",
+            "Proliferative DR": "Proliferative DR",
+        }
+
+    def _convert_cached_response_to_classifier_format(
+        self, cached_response: Dict
+    ) -> Dict:
+        """
+        Convert cached structured response back to classifier format.
+
+        Args:
+            cached_response: Cached response in structured format
+
+        Returns:
+            Dictionary in classifier format
+        """
+        if "result" not in cached_response:
+            return {}
+
+        cached_result = cached_response["result"]
+        class_probs = cached_result["class_probabilities"]
+        label_map = self._get_label_to_classifier_mapping()
+
+        # Get the predicted class from cached response
+        predicted_class_label = cached_result["predicted_class_label"]
+        predicted_class_short = label_map.get(
+            predicted_class_label, predicted_class_label
+        )
+
+        prediction_dict = {
+            "predicted_class": predicted_class_short,
+            "confidence": cached_result["confidence_score"],
+            "model_info": cached_response.get("metadata", {}).get(
+                "model_configuration", {}
+            ),
+        }
+
+        # Add all class probabilities with their original labels
+        for cp in class_probs:
+            classifier_label = label_map.get(cp["label"], cp["label"])
+            prediction_dict[classifier_label] = cp["probability"]
+
+        return prediction_dict
+
     def _build_classification_result(
         self,
         classification_results: Dict,
@@ -268,19 +326,20 @@ class FundusInferenceServer:
         """
         total_time = preprocessing_time + classification_time
 
+        # Create ProcessingTimes model instance
+        processing_times = ProcessingTimes(
+            _00_preprocessing_ms=round(preprocessing_time * 1000, 2),
+            _01_inference_ms=round(classification_time * 1000, 2),
+            total_ms=round(total_time * 1000, 2),
+            per_image_ms=round(total_time * 1000, 2),  # Same as total for single image
+        )
+
         response = {
             "status": "SUCCESS",
             "request_id": self._generate_request_id(),
             "timestamp_utc": self._get_utc_timestamp(),
             "image_name": image_filename,
-            "processing_times": {
-                "00_preprocessing_ms": round(preprocessing_time * 1000, 2),
-                "01_inference_ms": round(classification_time * 1000, 2),
-                "total_ms": round(total_time * 1000, 2),
-                "per_image_ms": round(
-                    total_time * 1000, 2
-                ),  # Same as total for single image
-            },
+            "processing_times": processing_times.to_dict(),
             "metadata": {
                 "image_properties": {
                     "original_width_px": image_shape[1],
@@ -994,9 +1053,7 @@ class FundusInferenceServer:
         try:
             self.stats["total_requests"] += 1
 
-            # TODO:
-            # Middlewares??? to simplify the request?
-
+            # VALIDATION: steps
             if not self.classifier:
                 return (
                     jsonify(
@@ -1049,8 +1106,19 @@ class FundusInferenceServer:
             images_to_process_indices = []
             cache_hit_count = 0
 
+            # Get model info once for cache operations
+            model_info = self.classifier.get_model_info()
+            model_architecture = model_info.get("architectures", ["EfficientNetB4"])[0]
+            ensemble_size = len(self.classifier.ensemble.models)
+
             for i, (image, filename) in enumerate(image_data):
-                cached_result = self.cache.get(filename, image)
+                cached_result = self.cache.get(
+                    filename,
+                    image,
+                    voting_strategy=voting_strategy,
+                    model_architecture=model_architecture,
+                    ensemble_size=ensemble_size,
+                )
                 if cached_result is not None:
                     # Cache hit - use cached result
                     cache_hit_count += 1
@@ -1181,52 +1249,20 @@ class FundusInferenceServer:
 
             # Build final classification results list
             classification_results_list = []
+            # Map from structured response back to classifier format
             for res in all_results:
                 if res.get("from_cache"):
                     # Extract the classification info from cached response
                     cached_response = res["result"]
-                    if "result" in cached_response:
-                        # Build prediction dict from cached response
-                        cached_result = cached_response["result"]
-                        class_probs = cached_result["class_probabilities"]
-
-                        # Map from structured response back to classifier format
-                        label_map = {
-                            "No Diabetic Retinopathy": "No DR",
-                            "Mild Non-Proliferative DR": "Mild DR",
-                            "Moderate Non-Proliferative DR": "Moderate DR",
-                            "Severe Non-Proliferative DR": "Severe DR",
-                            "Proliferative DR": "Proliferative DR",
-                        }
-
-                        # Get the predicted class from cached response
-                        predicted_class_label = cached_result["predicted_class_label"]
-                        predicted_class_short = label_map.get(
-                            predicted_class_label, predicted_class_label
-                        )
-
-                        prediction_dict = {
-                            "predicted_class": predicted_class_short,
-                            "confidence": cached_result["confidence_score"],
-                            "model_info": cached_response.get("metadata", {}).get(
-                                "model_configuration", {}
+                    classification_results_list.append(
+                        {
+                            "status": "success",
+                            "prediction": self._convert_cached_response_to_classifier_format(
+                                cached_response
                             ),
+                            "cached": True,
                         }
-
-                        # Add all class probabilities with their original labels
-                        for cp in class_probs:
-                            classifier_label = label_map.get(cp["label"], cp["label"])
-                            prediction_dict[classifier_label] = cp["probability"]
-
-                        classification_results_list.append(
-                            {
-                                "status": "success",
-                                "prediction": prediction_dict,
-                                "cached": True,
-                            }
-                        )
-                    else:
-                        classification_results_list.append(res["result"])
+                    )
                 else:
                     classification_results_list.append(res["result"])
 
@@ -1442,9 +1478,7 @@ class FundusInferenceServer:
 
         # Encode to JPEG
         _, buffer = cv2.imencode(".jpg", image_bgr)
-        encoded_image = base64.b64encode(buffer).decode("utf-8")
-
-        return encoded_image
+        return base64.b64encode(buffer).decode("utf-8")
 
     def _decode_image(self, encoded_image: str) -> Optional[np.ndarray]:
         """Decode base64 string to image."""

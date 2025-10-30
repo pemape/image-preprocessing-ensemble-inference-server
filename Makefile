@@ -17,7 +17,14 @@ PREPROCESS_CONFIG = configs\preprocessing_config.yaml
 PREPROCESS_INPUT = "./test-images/007-2809-100.jpg"
 PREPROCESS_OUTPUT = final_resized_processed_images  # Changed to match config default
 
-.PHONY: help install install-dev setup check test server client demo clean format lint docs preprocess preprocess-debug
+# OpenAPI Generator variables
+OPENAPI_SPEC = api/ensemble-inference.openapi.yaml
+OPENAPI_GENERATOR_IMAGE = openapitools/openapi-generator-cli
+GENERATOR_CONFIG = scripts/generator-cfg.yaml
+PROJECT_ROOT = $(shell cd)
+API_OUTPUT_DIR = api/generated
+
+.PHONY: help install install-dev setup check test server client demo clean format lint docs preprocess preprocess-debug openapi-generate openapi-validate
 
 # Default target
 help: ## Show this help message
@@ -45,6 +52,11 @@ help: ## Show this help message
 	@echo "  client-info  - Get server information"
 	@echo "  client-health- Check server health"
 	@echo "  test-config  - Test configuration validity"
+	@echo "  openapi-validate - Validate OpenAPI specification"
+	@echo "  openapi-generate - Generate client SDK from OpenAPI spec"
+	@echo "  openapi-generate-python - Generate Python client SDK"
+	@echo "  openapi-generate-docs - Generate HTML documentation"
+	@echo "  openapi-generate-all - Generate all SDKs and documentation"
 	@echo "  format       - Format code with black"
 	@echo "  lint         - Run code linting"
 	@echo "  clean        - Clean temporary files"
@@ -188,6 +200,48 @@ benchmark: ## Run performance benchmarks
 	@echo "Running performance benchmarks..."
 	$(PYTHON) -c "import time; import numpy as np; from fundus_preprocessor import FundusPreprocessor; test_image = np.random.randint(0, 255, (1000, 1000, 3), dtype=np.uint8); preprocessor = FundusPreprocessor('$(CONFIG_FILE)'); start_time = time.time(); result = preprocessor.process_image(test_image, 'benchmark'); end_time = time.time(); print(f'Processing time: {end_time - start_time:.3f} seconds'); print(f'Variants: {len(result)}')"
 
+# OpenAPI Generator Operations
+openapi-validate: ## Validate OpenAPI specification
+	@echo "Validating OpenAPI specification..."
+	docker run --rm -v "$(PROJECT_ROOT):/local" $(OPENAPI_GENERATOR_IMAGE) validate -i /local/$(OPENAPI_SPEC)
+	@echo "OpenAPI specification is valid!"
+
+openapi-generate: ## Generate client SDK from OpenAPI spec (using generator config)
+	@echo "Generating client SDK from OpenAPI specification..."
+	@if not exist "$(API_OUTPUT_DIR)" mkdir "$(API_OUTPUT_DIR)"
+	docker run --rm -v "$(PROJECT_ROOT):/local" $(OPENAPI_GENERATOR_IMAGE) generate -c /local/$(GENERATOR_CONFIG)
+	@echo "Client SDK generated successfully!"
+
+openapi-generate-docs: ## Generate HTML documentation from OpenAPI spec
+	@echo "Generating HTML documentation..."
+	@if not exist "$(API_OUTPUT_DIR)\docs" mkdir "$(API_OUTPUT_DIR)\docs"
+	docker run --rm -v "$(PROJECT_ROOT):/local" $(OPENAPI_GENERATOR_IMAGE) generate \
+		-i /local/$(OPENAPI_SPEC) \
+		-g html2 \
+		-o /local/$(API_OUTPUT_DIR)/docs
+	@echo "HTML documentation generated in $(API_OUTPUT_DIR)/docs"
+
+openapi-generate-markdown: ## Generate Markdown documentation from OpenAPI spec
+	@echo "Generating Markdown documentation..."
+	@if not exist "$(API_OUTPUT_DIR)\markdown" mkdir "$(API_OUTPUT_DIR)\markdown"
+	docker run --rm -v "$(PROJECT_ROOT):/local" $(OPENAPI_GENERATOR_IMAGE) generate \
+		-i /local/$(OPENAPI_SPEC) \
+		-g markdown \
+		-o /local/$(API_OUTPUT_DIR)/markdown
+	@echo "Markdown documentation generated in $(API_OUTPUT_DIR)/markdown"
+
+openapi-generate-all: openapi-validate openapi-generate-python openapi-generate-typescript openapi-generate-docs ## Generate all SDKs and documentation
+	@echo "All client SDKs and documentation generated successfully!"
+
+openapi-list-generators: ## List all available OpenAPI generators
+	@echo "Available OpenAPI generators:"
+	docker run --rm $(OPENAPI_GENERATOR_IMAGE) list
+
+openapi-clean: ## Clean generated API artifacts
+	@echo "Cleaning generated API artifacts..."
+	@if exist "$(API_OUTPUT_DIR)" rmdir /s /q "$(API_OUTPUT_DIR)"
+	@echo "Generated API artifacts cleaned!"
+
 # Cleanup
 clean: ## Clean temporary files
 	@echo "Cleaning temporary files..."
@@ -214,7 +268,7 @@ clean-logs: ## Clean log files
 	@if exist "logs" rmdir /s /q "logs"
 	@echo "Cleaned log files!"
 
-clean-all: clean clean-outputs clean-logs ## Clean everything
+clean-all: clean clean-outputs clean-logs openapi-clean ## Clean everything
 	@echo "Everything cleaned!"
 
 # Development helpers
