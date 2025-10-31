@@ -8,7 +8,6 @@ from ensemble_inference.models.error_response import ErrorResponse  # noqa: E501
 from ensemble_inference.models.health_response import HealthResponse  # noqa: E501
 from ensemble_inference.models.info_response import InfoResponse  # noqa: E501
 from ensemble_inference.models.model_info_response import ModelInfoResponse  # noqa: E501
-from ensemble_inference.models.stats_response import StatsResponse  # noqa: E501
 from ensemble_inference import util
 
 
@@ -41,17 +40,6 @@ def get_models():  # noqa: E501
 
 
     :rtype: Union[ModelInfoResponse, Tuple[ModelInfoResponse, int], Tuple[ModelInfoResponse, int, Dict[str, str]]
-    """
-    return 'do some magic!'
-
-
-def get_stats():  # noqa: E501
-    """Get server statistics
-
-    Retrieve server usage statistics and metrics # noqa: E501
-
-
-    :rtype: Union[StatsResponse, Tuple[StatsResponse, int], Tuple[StatsResponse, int, Dict[str, str]]
     """
     return 'do some magic!'
 

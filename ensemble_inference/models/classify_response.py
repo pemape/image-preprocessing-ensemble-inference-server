@@ -3,9 +3,11 @@ from datetime import date, datetime  # noqa: F401
 from typing import List, Dict  # noqa: F401
 
 from ensemble_inference.models.base_model import Model
+from ensemble_inference.models.operation_status import OperationStatus
 from ensemble_inference.models.prediction_result import PredictionResult
 from ensemble_inference import util
 
+from ensemble_inference.models.operation_status import OperationStatus  # noqa: E501
 from ensemble_inference.models.prediction_result import PredictionResult  # noqa: E501
 
 class ClassifyResponse(Model):
@@ -18,14 +20,14 @@ class ClassifyResponse(Model):
         """ClassifyResponse - a model defined in OpenAPI
 
         :param status: The status of this ClassifyResponse.  # noqa: E501
-        :type status: str
+        :type status: OperationStatus
         :param classification_time_seconds: The classification_time_seconds of this ClassifyResponse.  # noqa: E501
         :type classification_time_seconds: float
         :param prediction: The prediction of this ClassifyResponse.  # noqa: E501
         :type prediction: PredictionResult
         """
         self.openapi_types = {
-            'status': str,
+            'status': OperationStatus,
             'classification_time_seconds': float,
             'prediction': PredictionResult
         }
@@ -52,22 +54,22 @@ class ClassifyResponse(Model):
         return util.deserialize_model(dikt, cls)
 
     @property
-    def status(self) -> str:
+    def status(self) -> OperationStatus:
         """Gets the status of this ClassifyResponse.
 
 
         :return: The status of this ClassifyResponse.
-        :rtype: str
+        :rtype: OperationStatus
         """
         return self._status
 
     @status.setter
-    def status(self, status: str):
+    def status(self, status: OperationStatus):
         """Sets the status of this ClassifyResponse.
 
 
         :param status: The status of this ClassifyResponse.
-        :type status: str
+        :type status: OperationStatus
         """
 
         self._status = status

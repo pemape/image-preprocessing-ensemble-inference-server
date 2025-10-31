@@ -6,6 +6,7 @@ from typing import Union
 from ensemble_inference.models.batch_preprocess_response import BatchPreprocessResponse  # noqa: E501
 from ensemble_inference.models.batch_process_response import BatchProcessResponse  # noqa: E501
 from ensemble_inference.models.error_response import ErrorResponse  # noqa: E501
+from ensemble_inference.models.voting_strategy_enum import VotingStrategyEnum  # noqa: E501
 from ensemble_inference import util
 
 
@@ -30,8 +31,10 @@ def batch_process(images, voting_strategy=None):  # noqa: E501
     :param images: Multiple fundus image files
     :type images: List[str]
     :param voting_strategy: Ensemble voting strategy for classification
-    :type voting_strategy: str
+    :type voting_strategy: dict | bytes
 
     :rtype: Union[BatchProcessResponse, Tuple[BatchProcessResponse, int], Tuple[BatchProcessResponse, int, Dict[str, str]]
     """
+    if connexion.request.is_json:
+        voting_strategy =  VotingStrategyEnum.from_dict(connexion.request.get_json())  # noqa: E501
     return 'do some magic!'

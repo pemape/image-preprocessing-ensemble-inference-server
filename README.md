@@ -1,6 +1,6 @@
 # Fundus Image Preprocessing Configuration for Ensemble Model
 
-This repository implements the preprocessing pipeline described in the paper **"Ensemble of pre-processing techniques with CNN for diabetic retinopathy detection"** ([IET Image Processing, 2024](https://ietresearch.onlinelibrary.wiley.com/doi/full/10.1049/ipr2.12987)).
+This repository implements the preprocessing pipeline described in the paper **"Image preprocessing-based ensemble deep learning classification of diabetic retinopathy"** ([IET Image Processing, 2024](https://ietresearch.onlinelibrary.wiley.com/doi/full/10.1049/ipr2.12987)).
 
 ## Overview
 

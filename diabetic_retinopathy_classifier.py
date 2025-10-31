@@ -244,27 +244,23 @@ class ModelEnsemble:
     def _prepare_input(self, image: np.ndarray, config: Dict) -> torch.Tensor:
         """Prepare input tensor for model."""
         # Image should already be preprocessed, just need to convert to tensor
-        target_size = config.get("input_size", (500, 500))
+        # target_size = config.get("input_size", (500, 500))
 
-        # Ensure image is in correct format
-        if image.dtype != np.uint8:
-            if image.max() <= 1.0:
-                image = (image * 255).astype(np.uint8)
-            else:
-                image = image.astype(np.uint8)
+        # # Ensure image is in correct format
+        # if image.dtype != np.uint8:
+        #     if image.max() <= 1.0:
+        #         image = (image * 255).astype(np.uint8)
+        #     else:
+        #         image = image.astype(np.uint8)
 
-        # Resize if needed
-        if image.shape[:2] != target_size:
-            image = cv2.resize(image, target_size)
+        # # Resize if needed
+        # if image.shape[:2] != tuple(target_size):
+        #     image = cv2.resize(image, target_size)
 
-        # Convert to tensor and normalize
+        # # Convert to tensor and normalize
         transform = transforms.Compose(
             [
-                transforms.ToPILImage(),
                 transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),
             ]
         )
 

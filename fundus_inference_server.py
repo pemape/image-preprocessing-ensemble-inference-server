@@ -21,7 +21,13 @@ import uuid
 from datetime import datetime, timezone
 
 # Import generated OpenAPI models
-from ensemble_inference.models.processing_times import ProcessingTimes
+from ensemble_inference.models.process_result import ProcessResult
+from ensemble_inference.models.operation_status import OperationStatus
+from ensemble_inference.models.image_properties import ImageProperties
+from ensemble_inference.models.image_processing_times import ImageProcessingTimes
+from ensemble_inference.models.classification_result import ClassificationResult
+from ensemble_inference.models.class_probability import ClassProbability
+from ensemble_inference.models.voting_strategy_enum import VotingStrategyEnum
 
 # Import our modules
 from fundus_preprocessor import FundusPreprocessor
@@ -81,15 +87,6 @@ class FundusInferenceServer:
 
         # Setup Flask app
         self.app = self._create_flask_app()
-
-        # Server statistics
-        self.stats = {
-            "total_requests": 0,
-            "preprocessing_requests": 0,
-            "classification_requests": 0,
-            "errors": 0,
-            "start_time": time.time(),
-        }
 
         self.logger.info(
             f"FundusInferenceServer initialized successfully (max_batch_size={max_batch_size})"
@@ -206,10 +203,10 @@ class FundusInferenceServer:
         Returns:
             Dictionary in classifier format
         """
-        if "result" not in cached_response:
+        if "classification" not in cached_response:
             return {}
 
-        cached_result = cached_response["result"]
+        cached_result = cached_response["classification"]
         class_probs = cached_result["class_probabilities"]
         label_map = self._get_label_to_classifier_mapping()
 
@@ -237,9 +234,7 @@ class FundusInferenceServer:
     def _build_classification_result(
         self,
         classification_results: Dict,
-        image_shape: tuple,
-        processed_shape: tuple,
-    ) -> Dict:
+    ) -> ClassificationResult:
         """
         Build structured classification result following the API schema.
 
@@ -286,15 +281,13 @@ class FundusInferenceServer:
 
         confidence = classification_results.get("confidence", 0.0)
 
-        # Build result structure
-        result = {
-            "predicted_class_id": predicted_class_info["id"],
-            "predicted_class_label": predicted_class_info["label"],
-            "confidence_score": round(confidence, 6),
-            "diagnosis_certainty": self._get_diagnosis_certainty(confidence),
-            "class_probabilities": class_probabilities,
-        }
-
+        result = ClassificationResult(
+            predicted_class_id=predicted_class_info["id"],
+            predicted_class_label=predicted_class_info["label"],
+            confidence_score=round(confidence, 6),
+            diagnosis_certainty=self._get_diagnosis_certainty(confidence),
+            class_probabilities=class_probabilities,
+        )
         return result
 
     def _build_single_process_response(
@@ -326,20 +319,19 @@ class FundusInferenceServer:
         """
         total_time = preprocessing_time + classification_time
 
-        # Create ProcessingTimes model instance
-        processing_times = ProcessingTimes(
-            _00_preprocessing_ms=round(preprocessing_time * 1000, 2),
-            _01_inference_ms=round(classification_time * 1000, 2),
-            total_ms=round(total_time * 1000, 2),
-            per_image_ms=round(total_time * 1000, 2),  # Same as total for single image
-        )
-
         response = {
             "status": "SUCCESS",
             "request_id": self._generate_request_id(),
             "timestamp_utc": self._get_utc_timestamp(),
             "image_name": image_filename,
-            "processing_times": processing_times.to_dict(),
+            "processing_times": {
+                "preprocessing_ms": round(preprocessing_time * 1000, 2),
+                "inference_ms": round(classification_time * 1000, 2),
+                "total_ms": round(total_time * 1000, 2),
+                "per_image_ms": round(
+                    total_time * 1000, 2
+                ),  # Same as total for single image
+            },
             "metadata": {
                 "image_properties": {
                     "original_width_px": image_shape[1],
@@ -373,11 +365,9 @@ class FundusInferenceServer:
             }
 
             # Add classification result
-            response["result"] = self._build_classification_result(
+            response["classification"] = self._build_classification_result(
                 classification_results,
-                image_shape,
-                processed_shape,
-            )
+            ).to_dict()
 
         # Optionally include preprocessed images
         if include_images and variants:
@@ -482,11 +472,9 @@ class FundusInferenceServer:
                         ),
                         "total_ms": round(individual_time * 1000, 2),
                     },
-                    "result": self._build_classification_result(
+                    "classification": self._build_classification_result(
                         classification_result.get("prediction", {}),
-                        image.shape[:2],
-                        (500, 500),  # Assume processed size
-                    ),
+                    ).to_dict(),
                 }
             else:
                 # Failed processing
@@ -503,17 +491,23 @@ class FundusInferenceServer:
 
         return response
 
-    # ========== End Response Schema Helpers ==========
+    def _get_voting_strategy_values(self) -> List[str]:
+        values = [v for k, v in vars(VotingStrategyEnum).items() if k.isupper()]
+        return values
 
     def _create_flask_app(self) -> Flask:
         """Create and configure Flask application."""
         app = Flask(__name__)
-        app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB max file size
+
+        # Set max content length from environment variable or use default 8MB
+        max_content_mb = int(os.getenv("MAX_CONTENT_LENGTH_MB", "8"))
+        app.config["MAX_CONTENT_LENGTH"] = (
+            max_content_mb * 1024 * 1024
+        )  # Convert MB to bytes
 
         # Register routes
         app.route("/health", methods=["GET"])(self.health_check)
         app.route("/info", methods=["GET"])(self.get_info)
-        app.route("/stats", methods=["GET"])(self.get_stats)
         app.route("/config", methods=["GET"])(self.get_config)
         app.route("/models", methods=["GET"])(self.get_models)
 
@@ -537,24 +531,18 @@ class FundusInferenceServer:
 
     def health_check(self):
         """Health check endpoint."""
-        self.stats["total_requests"] += 1
-
         health_status = {
             "status": "healthy",
             "timestamp": time.time(),
-            "uptime": time.time() - self.stats["start_time"],
             "modules": {
                 "preprocessor": True,
                 "classifier": self.classifier is not None,
             },
         }
-
         return jsonify(health_status)
 
     def get_info(self):
         """Get server information."""
-        self.stats["total_requests"] += 1
-
         info = {
             "name": "Fundus Image Processing and Classification Server",
             "version": "1.0.0",
@@ -579,7 +567,6 @@ class FundusInferenceServer:
             "endpoints": {
                 "GET /health": "Health check",
                 "GET /info": "Server information",
-                "GET /stats": "Server statistics",
                 "GET /config": "Configuration details",
                 "GET /models": "Model information",
                 "POST /preprocess": "Image preprocessing only",
@@ -593,30 +580,8 @@ class FundusInferenceServer:
 
         return jsonify(info)
 
-    def get_stats(self):
-        """Get server statistics."""
-        self.stats["total_requests"] += 1
-
-        uptime = time.time() - self.stats["start_time"]
-
-        statistics = {
-            "uptime_seconds": uptime,
-            "uptime_formatted": f"{int(uptime // 3600)}h {int((uptime % 3600) // 60)}m {int(uptime % 60)}s",
-            "total_requests": self.stats["total_requests"],
-            "preprocessing_requests": self.stats["preprocessing_requests"],
-            "classification_requests": self.stats["classification_requests"],
-            "errors": self.stats["errors"],
-            "requests_per_minute": (
-                self.stats["total_requests"] / (uptime / 60) if uptime > 0 else 0
-            ),
-        }
-
-        return jsonify(statistics)
-
     def get_config(self):
         """Get configuration details."""
-        self.stats["total_requests"] += 1
-
         config_info = {
             "preprocessing": {
                 "target_resolution": self.preprocessor.config.get("general", {}).get(
@@ -647,8 +612,6 @@ class FundusInferenceServer:
 
     def get_models(self):
         """Get model information."""
-        self.stats["total_requests"] += 1
-
         if not self.classifier:
             return jsonify({"error": "Classification module not available"}), 400
 
@@ -657,22 +620,16 @@ class FundusInferenceServer:
 
     def get_cache_stats(self):
         """Get cache statistics endpoint."""
-        self.stats["total_requests"] += 1
-
         cache_stats = self.cache.get_stats()
         return jsonify(cache_stats)
 
     def get_cache_health(self):
         """Get cache health status endpoint."""
-        self.stats["total_requests"] += 1
-
         health_status = self.cache.health_check()
         return jsonify(health_status)
 
     def clear_cache(self):
         """Clear cache endpoint."""
-        self.stats["total_requests"] += 1
-
         try:
             # Get optional pattern from request
             data = request.get_json() if request.is_json else {}
@@ -695,9 +652,6 @@ class FundusInferenceServer:
     def preprocess_image(self):
         """Preprocess a single image."""
         try:
-            self.stats["total_requests"] += 1
-            self.stats["preprocessing_requests"] += 1
-
             # Get image from request
             image_data = self._get_image_from_request(request)
             if image_data is None:
@@ -710,16 +664,14 @@ class FundusInferenceServer:
             variants = self.preprocessor.process_image(image, "uploaded_image")
             processing_time = time.time() - start_time
 
-            # Convert to base64 for JSON response
-            response_variants = {}
-            for variant_name, variant_image in variants.items():
-                encoded_image = self._encode_image(variant_image)
-                response_variants[variant_name] = encoded_image
+            # Check if user wants to include encoded images
+            include_encoded_images = (
+                request.args.get("include_encoded_images", "false").lower() == "true"
+            )
 
             response = {
                 "status": "success",
                 "processing_time_seconds": processing_time,
-                "variants": response_variants,
                 "metadata": {
                     "original_size": list(image.shape[:2]),
                     "processed_size": list(variants["original"].shape[:2]),
@@ -727,19 +679,23 @@ class FundusInferenceServer:
                 },
             }
 
+            # Conditionally include base64-encoded variants
+            if include_encoded_images:
+                response_variants = {}
+                for variant_name, variant_image in variants.items():
+                    encoded_image = self._encode_image(variant_image)
+                    response_variants[variant_name] = encoded_image
+                response["preprocessed_images"] = response_variants
+
             return jsonify(response)
 
         except Exception as e:
-            self.stats["errors"] += 1
             self.logger.error(f"Preprocessing error: {e}")
             return jsonify({"error": str(e)}), 500
 
     def classify_image(self):
         """Classify from preprocessed images."""
         try:
-            self.stats["total_requests"] += 1
-            self.stats["classification_requests"] += 1
-
             if not self.classifier:
                 return jsonify({"error": "Classification module not available"}), 400
 
@@ -786,17 +742,12 @@ class FundusInferenceServer:
                 self.classifier.ensemble.voting_strategy = original_strategy
 
         except Exception as e:
-            self.stats["errors"] += 1
             self.logger.error(f"Classification error: {e}")
             return jsonify({"error": str(e)}), 500
 
     def full_process(self):
         """Full pipeline: preprocess + classify."""
         try:
-            self.stats["total_requests"] += 1
-            self.stats["preprocessing_requests"] += 1
-            self.stats["classification_requests"] += 1
-
             # VALIDATION: Ensure only ONE image is provided (single endpoint)
             files = request.files.getlist("image")
             if len(files) > 1:
@@ -842,25 +793,46 @@ class FundusInferenceServer:
                 ensemble_size=ensemble_size,
             )
             if cached_result is not None:
-                self.logger.info(f"Cache HIT for image: {image_filename}")
+                self.logger.debug(f"Cache HIT for image: {image_filename}")
 
                 # Update processing times to reflect cache retrieval (near-zero)
-                cached_result["processing_times"] = {
-                    "00_preprocessing_ms": 0.0,
-                    "01_inference_ms": 0.0,
-                    "total_ms": 0.0,
-                    "per_image_ms": 0.0,
-                }
+                if (
+                    "process_result" in cached_result
+                    and "image_processing_times" in cached_result["process_result"]
+                ):
+                    image_processing_times = ImageProcessingTimes(
+                        preprocessing_ms=0.0,
+                        inference_ms=0.0,
+                        total_ms=0.0,
+                    )
 
-                # Update timestamp to current time
-                cached_result["timestamp_utc"] = self._get_utc_timestamp()
+                    cached_result["process_result"][
+                        "image_processing_times"
+                    ] = image_processing_times.to_dict()
 
-                # Generate new request ID for this cached request
-                cached_result["request_id"] = self._generate_request_id()
+                # Update timestamp to current time in metadata
+                if (
+                    "process_metadata" in cached_result
+                    and "timestamp_utc" in cached_result["process_metadata"]
+                ):
+                    cached_result["process_metadata"][
+                        "timestamp_utc"
+                    ] = self._get_utc_timestamp()
 
-                # Add cache indicators
-                cached_result["cached"] = True
-                cached_result["cache_hit"] = True
+                if (
+                    "process_metadata" in cached_result
+                    and "request_id" in cached_result["process_metadata"]
+                ):
+                    cached_result["process_metadata"][
+                        "request_id"
+                    ] = self._generate_request_id()
+
+                # Mark as cached in result
+                if (
+                    "process_result" in cached_result
+                    and "cached" in cached_result["process_result"]
+                ):
+                    cached_result["process_result"]["cached"] = True
 
                 return jsonify(cached_result)
 
@@ -869,11 +841,13 @@ class FundusInferenceServer:
 
             # Preprocess
             preprocessing_start = time.time()
-            variants = self.preprocessor.process_image(image, image_filename)
+            preprocessed_image_variants = self.preprocessor.process_image(
+                image, image_filename
+            )
             preprocessing_time = time.time() - preprocessing_start
 
             # Classify if classifier available
-            classification_results = None
+            classification_results_from_classifier = None
             classification_time = 0
 
             if self.classifier:
@@ -883,11 +857,11 @@ class FundusInferenceServer:
                 )
 
                 # Validate voting strategy
-                if voting_strategy not in ["soft", "hard"]:
+                if voting_strategy not in self._get_voting_strategy_values():
                     return (
                         jsonify(
                             {
-                                "error": f"Invalid voting_strategy '{voting_strategy}'. Must be 'soft' or 'hard'"
+                                "error": f"Invalid voting_strategy '{voting_strategy}'. Must be in {self._get_voting_strategy_values()}"
                             }
                         ),
                         400,
@@ -899,37 +873,121 @@ class FundusInferenceServer:
 
                 try:
                     classification_start = time.time()
-                    classification_results = self.classifier.classify(variants)
+                    classification_results_from_classifier = self.classifier.classify(
+                        preprocessed_image_variants
+                    )
                     classification_time = time.time() - classification_start
                 finally:
                     # Restore original voting strategy
                     self.classifier.ensemble.voting_strategy = original_strategy
 
             # Check if user wants to include preprocessed images
-            include_images = (
-                request.form.get("include_images", "false").lower() == "true"
+            include_encoded_images = (
+                request.args.get("include_encoded_images", "false").lower() == "true"
             )
 
-            # Build structured response using the new schema
-            if classification_results:
-                response = self._build_single_process_response(
-                    image_shape=image.shape[:2],
-                    processed_shape=variants["original"].shape[:2],
-                    preprocessing_time=preprocessing_time,
-                    classification_time=classification_time,
-                    classification_results=classification_results,
-                    include_images=include_images,
-                    variants=variants if include_images else None,
-                    image_filename=image_filename,
+            # Build structured response using typed models
+            if classification_results_from_classifier:
+                # Create ImageProperties instance
+                image_properties = ImageProperties(
+                    original_width_px=image.shape[1],
+                    original_height_px=image.shape[0],
+                    processed_width_px=preprocessed_image_variants["original"].shape[1],
+                    processed_height_px=preprocessed_image_variants["original"].shape[
+                        0
+                    ],
                 )
 
-                # Add cache indicator
-                response["cached"] = False
-                response["cache_hit"] = False
+                # Create ImageProcessingTimes instance
+                image_processing_times = ImageProcessingTimes(
+                    preprocessing_ms=round(preprocessing_time * 1000, 2),
+                    inference_ms=round(classification_time * 1000, 2),
+                    total_ms=round(
+                        (preprocessing_time + classification_time) * 1000, 2
+                    ),
+                )
+
+                # Build classification result using typed models
+                classification_dict = self._build_classification_result(
+                    classification_results_from_classifier,
+                ).to_dict()
+
+                # Create ClassProbability instances
+                class_probabilities = []
+                for cp_dict in classification_dict["class_probabilities"]:
+                    class_prob = ClassProbability(
+                        id=cp_dict["id"],
+                        label=cp_dict["label"],
+                        probability=cp_dict["probability"],
+                    )
+                    class_probabilities.append(class_prob)
+
+                # Create ClassificationResult instance
+                classification_result = ClassificationResult(
+                    predicted_class_id=classification_dict["predicted_class_id"],
+                    predicted_class_label=classification_dict["predicted_class_label"],
+                    confidence_score=classification_dict["confidence_score"],
+                    diagnosis_certainty=classification_dict["diagnosis_certainty"],
+                    class_probabilities=class_probabilities,
+                )
+
+                # Create ProcessResult instance
+                process_result = ProcessResult(
+                    status=OperationStatus.SUCCESS,
+                    cached=False,
+                    image_name=image_filename,
+                    image_index=0,
+                    image_properties=image_properties,
+                    image_processing_times=image_processing_times,
+                    classification=classification_result,
+                )
+
+                # Optionally include preprocessed images
+                if include_encoded_images:
+                    preprocessed_images = {}
+                    for (
+                        variant_name,
+                        variant_image,
+                    ) in preprocessed_image_variants.items():
+                        encoded_image = self._encode_image(variant_image)
+                        preprocessed_images[variant_name] = encoded_image
+                    process_result.preprocessed_images = preprocessed_images
+
+                # Build process_metadata
+                process_metadata = {
+                    "request_id": self._generate_request_id(),
+                    "timestamp_utc": self._get_utc_timestamp(),
+                    "version_info": {
+                        "api_version": self._get_api_version(),
+                        "model_version": self._get_model_version(),
+                    },
+                }
+
+                # Add model configuration
+                model_info = self.classifier.get_model_info()
+                architectures = model_info.get("architectures", [])
+                datasets = model_info.get("datasets", [])
+
+                process_metadata["model_configuration"] = {
+                    "model_architecture": (
+                        architectures[0] if architectures else "EfficientNetB4"
+                    ),
+                    "ensemble_size": len(self.classifier.ensemble.models),
+                    "trained_datasets": (
+                        datasets if datasets else ["APTOS-2019-DR-Classification"]
+                    ),
+                    "voting_strategy": f"{voting_strategy.capitalize()}-Voting",
+                }
+
+                # Combine into final response
+                response = {
+                    "process_metadata": process_metadata,
+                    "process_result": process_result.to_dict(),
+                }
 
                 # STORE IN CACHE: Save result for future requests with model configuration
                 # Don't cache if include_images=true (too large)
-                if not include_images:
+                if not include_encoded_images:
                     cache_stored = self.cache.set(
                         image_filename,
                         image,
@@ -942,52 +1000,73 @@ class FundusInferenceServer:
                         self.logger.debug(f"Result cached for image: {image_filename}")
             else:
                 # Preprocessing-only mode (classifier not available)
-                response = {
-                    "status": "SUCCESS",
+                # Create ImageProperties instance
+                image_properties = ImageProperties(
+                    original_width_px=image.shape[1],
+                    original_height_px=image.shape[0],
+                    processed_width_px=preprocessed_image_variants["original"].shape[1],
+                    processed_height_px=preprocessed_image_variants["original"].shape[
+                        0
+                    ],
+                )
+
+                # Create ImageProcessingTimes instance
+                image_processing_times = ImageProcessingTimes(
+                    preprocessing_ms=round(preprocessing_time * 1000, 2),
+                    inference_ms=0.0,
+                    total_ms=round(preprocessing_time * 1000, 2),
+                )
+
+                # Create ProcessResult instance
+                process_result = ProcessResult(
+                    status=OperationStatus.SUCCESS,
+                    cached=False,
+                    image_name=image_filename,
+                    image_properties=image_properties,
+                    image_processing_times=image_processing_times,
+                )
+
+                # Optionally include preprocessed images
+                if include_encoded_images:
+                    preprocessed_images = {}
+                    for (
+                        variant_name,
+                        variant_image,
+                    ) in preprocessed_image_variants.items():
+                        encoded_image = self._encode_image(variant_image)
+                        preprocessed_images[variant_name] = encoded_image
+                    process_result.preprocessed_images = preprocessed_images
+
+                process_metadata = {
                     "request_id": self._generate_request_id(),
                     "timestamp_utc": self._get_utc_timestamp(),
-                    "image_name": image_filename,
-                    "cached": False,
-                    "cache_hit": False,
-                    "processing_times": {
-                        "preprocessing_ms": round(preprocessing_time * 1000, 2),
-                        "inference_ms": 0.0,
-                        "total_ms": round(preprocessing_time * 1000, 2),
-                        "per_image_ms": round(preprocessing_time * 1000, 2),
+                    "version_info": {
+                        "api_version": self._get_api_version(),
+                        "model_version": self._get_model_version(),
                     },
-                    "metadata": {
-                        "image_properties": {
-                            "original_width_px": image.shape[1],
-                            "original_height_px": image.shape[0],
-                            "processed_width_px": variants["original"].shape[1],
-                            "processed_height_px": variants["original"].shape[0],
-                        },
-                        "version_info": {
-                            "api_version": self._get_api_version(),
-                            "model_version": self._get_model_version(),
-                        },
-                    },
-                    "warning": "Classification module not available - preprocessing only",
                 }
 
-                if include_images:
-                    response["preprocessed_images"] = {}
-                    for variant_name, variant_image in variants.items():
-                        encoded_image = self._encode_image(variant_image)
-                        response["preprocessed_images"][variant_name] = encoded_image
+                response = {
+                    "process_metadata": process_metadata,
+                    "process_result": process_result.to_dict(),
+                }
+
+                # Add warning to result dictionary after creation
+                response_dict = process_result.to_dict()
+                response_dict["warning"] = (
+                    "Classification module not available - preprocessing only"
+                )
+                response["process_result"] = response_dict
 
             return jsonify(response)
 
         except Exception as e:
-            self.stats["errors"] += 1
             self.logger.error(f"Full processing error: {e}")
             return jsonify({"error": str(e)}), 500
 
     def batch_preprocess(self):
         """Batch preprocessing endpoint."""
         try:
-            self.stats["total_requests"] += 1
-
             # Get images from request (returns list of tuples: (image, filename))
             image_data = self._get_images_from_request(request)
             if not image_data:
@@ -1029,8 +1108,6 @@ class FundusInferenceServer:
                         }
                     )
 
-            self.stats["preprocessing_requests"] += len(images)
-
             response = {
                 "status": "success",
                 "batch_size": len(images),
@@ -1044,15 +1121,12 @@ class FundusInferenceServer:
             return jsonify(response)
 
         except Exception as e:
-            self.stats["errors"] += 1
             self.logger.error(f"Batch preprocessing error: {e}")
             return jsonify({"error": str(e)}), 500
 
     def batch_process(self):
         """Batch full processing endpoint with Redis caching support."""
         try:
-            self.stats["total_requests"] += 1
-
             # VALIDATION: steps
             if not self.classifier:
                 return (
@@ -1186,7 +1260,7 @@ class FundusInferenceServer:
                                 processing_results.append(
                                     {
                                         "index": images_to_process_indices[i],
-                                        "result": {
+                                        "classification": {
                                             "status": "success",
                                             "prediction": classification_results,
                                         },
@@ -1200,7 +1274,7 @@ class FundusInferenceServer:
                                 processing_results.append(
                                     {
                                         "index": images_to_process_indices[i],
-                                        "result": {
+                                        "classification": {
                                             "status": "classification_failed",
                                             "error": str(e),
                                         },
@@ -1211,7 +1285,7 @@ class FundusInferenceServer:
                             processing_results.append(
                                 {
                                     "index": images_to_process_indices[i],
-                                    "result": {
+                                    "classification": {
                                         "status": "preprocessing_failed",
                                         "error": "Preprocessing failed",
                                     },
@@ -1227,7 +1301,7 @@ class FundusInferenceServer:
                 # STORE IN CACHE: Cache successful results
                 for proc_result in processing_results:
                     if (
-                        proc_result["result"].get("status") == "success"
+                        proc_result["classification"].get("status") == "success"
                         and "response" in proc_result
                     ):
                         cache_stored = self.cache.set(
@@ -1240,9 +1314,6 @@ class FundusInferenceServer:
                                 f"Result cached for batch image: {proc_result['filename']}"
                             )
 
-            self.stats["preprocessing_requests"] += len(images_to_process)
-            self.stats["classification_requests"] += len(images_to_process)
-
             # Combine cached and processed results in original order
             all_results = cached_results + processing_results
             all_results.sort(key=lambda x: x["index"])
@@ -1253,7 +1324,7 @@ class FundusInferenceServer:
             for res in all_results:
                 if res.get("from_cache"):
                     # Extract the classification info from cached response
-                    cached_response = res["result"]
+                    cached_response = res["classification"]
                     classification_results_list.append(
                         {
                             "status": "success",
@@ -1264,7 +1335,7 @@ class FundusInferenceServer:
                         }
                     )
                 else:
-                    classification_results_list.append(res["result"])
+                    classification_results_list.append(res["classification"])
 
             # Build structured response using the new schema
             batch_size = len(image_data)
@@ -1365,11 +1436,9 @@ class FundusInferenceServer:
                             "inference_ms": round(individual_inference * 1000, 2),
                             "total_ms": round(individual_time * 1000, 2),
                         },
-                        "result": self._build_classification_result(
+                        "classification": self._build_classification_result(
                             classification_result.get("prediction", {}),
-                            image.shape[:2],
-                            (500, 500),  # Assume processed size
-                        ),
+                        ).to_dict(),
                     }
                 else:
                     # Failed processing
@@ -1388,7 +1457,6 @@ class FundusInferenceServer:
             return jsonify(response)
 
         except Exception as e:
-            self.stats["errors"] += 1
             self.logger.error(f"Batch processing error: {e}")
             return jsonify({"error": str(e)}), 500
 

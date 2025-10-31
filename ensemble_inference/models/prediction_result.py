@@ -14,7 +14,7 @@ class PredictionResult(Model):
     Do not edit the class manually.
     """
 
-    def __init__(self, no_dr=None, mild_dr=None, moderate_dr=None, severe_dr=None, proliferative_dr=None, predicted_class=None, confidence=None, ensemble_size=None, voting_strategy=None, model_info=None):  # noqa: E501
+    def __init__(self, no_dr=None, mild_dr=None, moderate_dr=None, severe_dr=None, proliferative_dr=None, predicted_class=None, confidence=None, model_info=None):  # noqa: E501
         """PredictionResult - a model defined in OpenAPI
 
         :param no_dr: The no_dr of this PredictionResult.  # noqa: E501
@@ -31,10 +31,6 @@ class PredictionResult(Model):
         :type predicted_class: str
         :param confidence: The confidence of this PredictionResult.  # noqa: E501
         :type confidence: float
-        :param ensemble_size: The ensemble_size of this PredictionResult.  # noqa: E501
-        :type ensemble_size: int
-        :param voting_strategy: The voting_strategy of this PredictionResult.  # noqa: E501
-        :type voting_strategy: str
         :param model_info: The model_info of this PredictionResult.  # noqa: E501
         :type model_info: PredictionResultModelInfo
         """
@@ -46,8 +42,6 @@ class PredictionResult(Model):
             'proliferative_dr': float,
             'predicted_class': str,
             'confidence': float,
-            'ensemble_size': int,
-            'voting_strategy': str,
             'model_info': PredictionResultModelInfo
         }
 
@@ -59,8 +53,6 @@ class PredictionResult(Model):
             'proliferative_dr': 'Proliferative DR',
             'predicted_class': 'predicted_class',
             'confidence': 'confidence',
-            'ensemble_size': 'ensemble_size',
-            'voting_strategy': 'voting_strategy',
             'model_info': 'model_info'
         }
 
@@ -71,8 +63,6 @@ class PredictionResult(Model):
         self._proliferative_dr = proliferative_dr
         self._predicted_class = predicted_class
         self._confidence = confidence
-        self._ensemble_size = ensemble_size
-        self._voting_strategy = voting_strategy
         self._model_info = model_info
 
     @classmethod
@@ -232,54 +222,6 @@ class PredictionResult(Model):
         """
 
         self._confidence = confidence
-
-    @property
-    def ensemble_size(self) -> int:
-        """Gets the ensemble_size of this PredictionResult.
-
-
-        :return: The ensemble_size of this PredictionResult.
-        :rtype: int
-        """
-        return self._ensemble_size
-
-    @ensemble_size.setter
-    def ensemble_size(self, ensemble_size: int):
-        """Sets the ensemble_size of this PredictionResult.
-
-
-        :param ensemble_size: The ensemble_size of this PredictionResult.
-        :type ensemble_size: int
-        """
-
-        self._ensemble_size = ensemble_size
-
-    @property
-    def voting_strategy(self) -> str:
-        """Gets the voting_strategy of this PredictionResult.
-
-
-        :return: The voting_strategy of this PredictionResult.
-        :rtype: str
-        """
-        return self._voting_strategy
-
-    @voting_strategy.setter
-    def voting_strategy(self, voting_strategy: str):
-        """Sets the voting_strategy of this PredictionResult.
-
-
-        :param voting_strategy: The voting_strategy of this PredictionResult.
-        :type voting_strategy: str
-        """
-        allowed_values = ["soft", "hard"]  # noqa: E501
-        if voting_strategy not in allowed_values:
-            raise ValueError(
-                "Invalid value for `voting_strategy` ({0}), must be one of {1}"
-                .format(voting_strategy, allowed_values)
-            )
-
-        self._voting_strategy = voting_strategy
 
     @property
     def model_info(self) -> PredictionResultModelInfo:
