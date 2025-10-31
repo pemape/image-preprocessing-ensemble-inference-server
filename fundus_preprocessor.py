@@ -723,24 +723,40 @@ class FundusPreprocessor:
         variants = {}
 
         with ThreadPoolExecutor(max_workers=5) as executor:
-            # Submit all variant processing tasks
-            futures = {
-                executor.submit(
-                    self._create_original_variant, clipped_image
-                ): "original",
-                executor.submit(
-                    self._create_rgb_clahe_variant, clipped_image
-                ): "rgb_clahe",
-                executor.submit(
-                    self._create_min_pooling_variant, clipped_image
-                ): "min_pooling",
-                executor.submit(
-                    self._create_lab_clahe_variant, clipped_image
-                ): "lab_clahe",
-                executor.submit(
-                    self._create_max_green_gsc_variant, clipped_image
-                ): "max_green_gsc",
-            }
+            # Submit only configured variant processing tasks
+            futures = {}
+
+            # Check each variant configuration and only submit if configured
+            if self.config.get("image_variants", {}).get("original", {}) != {}:
+                futures[
+                    executor.submit(self._create_original_variant, clipped_image)
+                ] = "original"
+
+            if self.config.get("image_variants", {}).get("rgb_clahe", {}) != {}:
+                futures[
+                    executor.submit(self._create_rgb_clahe_variant, clipped_image)
+                ] = "rgb_clahe"
+
+            if self.config.get("image_variants", {}).get("min_pooling", {}) != {}:
+                futures[
+                    executor.submit(self._create_min_pooling_variant, clipped_image)
+                ] = "min_pooling"
+
+            if self.config.get("image_variants", {}).get("lab_clahe", {}) != {}:
+                futures[
+                    executor.submit(self._create_lab_clahe_variant, clipped_image)
+                ] = "lab_clahe"
+
+            if self.config.get("image_variants", {}).get("max_green_gsc", {}) != {}:
+                futures[
+                    executor.submit(self._create_max_green_gsc_variant, clipped_image)
+                ] = "max_green_gsc"
+
+            # Log which variants are being processed
+            variant_names = list(futures.values())
+            self.logger.info(
+                f"Processing {len(variant_names)} configured variants: {variant_names}"
+            )
 
             # Collect results
             for future in as_completed(futures):

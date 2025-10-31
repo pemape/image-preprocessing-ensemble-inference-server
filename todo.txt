@@ -1,6 +1,0 @@
-OAS generated interface from openapi
-
-generated interface and the implementation should be separated
-
-in case of regeneration to not overwrite the implementation
-

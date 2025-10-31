@@ -47,11 +47,6 @@ class_names:
 
 confidence_threshold: 0.5
 
-batch_processing:
-  enabled: true
-  max_batch_size: 4
-  parallel_models: true
-
 # Redis Cache Configuration (Optional)
 # If enabled=true but Redis is not available, server will continue without caching
 

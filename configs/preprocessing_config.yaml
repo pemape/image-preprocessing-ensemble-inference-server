@@ -52,7 +52,6 @@ black_border_clipping:
 # 3. Ben Graham enhanced image (feature enhancement with Gaussian blur)
 # 4. Lab-CLAHE enhanced image
 # 5. MaxGreenGsc enhanced image
-
 image_variants:
   # Original clipped image (baseline)
   original:

@@ -17,15 +17,7 @@ from typing import Dict, List, Tuple, Optional, Union
 import json
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-# Import for Xception (assuming it's available)
-try:
-    import pretrainedmodels
-
-    XCEPTION_AVAILABLE = True
-except ImportError:
-    XCEPTION_AVAILABLE = False
-    logging.warning("pretrainedmodels not available. Xception models will be disabled.")
+import pretrainedmodels
 
 
 class XceptionModel(nn.Module):
@@ -33,11 +25,6 @@ class XceptionModel(nn.Module):
 
     def __init__(self, num_classes: int = 5, pretrained: bool = True):
         super(XceptionModel, self).__init__()
-
-        if not XCEPTION_AVAILABLE:
-            raise ImportError(
-                "pretrainedmodels required for Xception. Install with: pip install pretrainedmodels"
-            )
 
         # Load pretrained Xception
         if pretrained:
@@ -118,11 +105,6 @@ class ModelEnsemble:
 
             # Create model
             if architecture == "xception":
-                if not XCEPTION_AVAILABLE:
-                    self.logger.warning(
-                        f"Xception not available, skipping {model_path}"
-                    )
-                    return None
                 model = XceptionModel(num_classes=num_classes, pretrained=False)
                 model = model.get_model_ref()
             elif architecture == "efficientnetb4":
@@ -441,11 +423,6 @@ def create_default_classifier_config(output_path: str, model_base_path: str):
             "Proliferative DR",
         ],
         "confidence_threshold": 0.5,
-        "batch_processing": {
-            "enabled": True,
-            "max_batch_size": 4,
-            "parallel_models": True,
-        },
     }
 
     with open(output_path, "w") as f:
