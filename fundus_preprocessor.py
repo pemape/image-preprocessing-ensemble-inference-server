@@ -134,7 +134,7 @@ class FundusPreprocessor:
             Dictionary containing all processed image variants
         """
         start_time = time.time()
-        self.logger.info(f"Starting processing for image {image_id or 'unknown'}")
+        self.logger.debug(f"Starting processing for image {image_id or 'unknown'}")
 
         # Step 1: Input validation
         if not self._validate_input_image(image):
@@ -171,10 +171,12 @@ class FundusPreprocessor:
                 self._save_final_variant(processed, variant_name, image_id)
 
         processing_time = time.time() - start_time
-        self.logger.info(f"Processing completed in {processing_time:.2f} seconds")
+        self.logger.debug(f"Processing completed in {processing_time:.2f} seconds")
 
         if self.config.get("debug", {}).get("log_processing_time", True):
-            self.logger.info(f"Processing time breakdown: {processing_time:.2f}s total")
+            self.logger.debug(
+                f"Processing time breakdown: {processing_time:.2f}s total"
+            )
 
         return final_variants
 
@@ -301,7 +303,7 @@ class FundusPreprocessor:
             selected_method = main_method
             selected_image = results[main_method][0]
             selected_ratio = results[main_method][1]
-            self.logger.info(
+            self.logger.debug(
                 f"Using main method '{main_method}' with crop ratio {selected_ratio:.3f}"
             )
         else:
@@ -441,18 +443,18 @@ class FundusPreprocessor:
             )
 
             # Log summary to console
-            self.logger.info("Border Clipping Methods Comparison:")
+            self.logger.debug("Border Clipping Methods Comparison:")
             for method in all_methods:
                 if method in results:
                     crop_ratio = results[method][1]
                     status = "✓ SELECTED" if method == selected_method else "✓"
                     main_indicator = " (MAIN)" if method == main_method else ""
-                    self.logger.info(
+                    self.logger.debug(
                         f"  {method}{main_indicator}: {status} crop_ratio={crop_ratio:.3f}"
                     )
                 else:
                     main_indicator = " (MAIN)" if method == main_method else ""
-                    self.logger.info(f"  {method}{main_indicator}: ✗ FAILED")
+                    self.logger.debug(f"  {method}{main_indicator}: ✗ FAILED")
 
         except Exception as e:
             self.logger.error(
@@ -754,7 +756,7 @@ class FundusPreprocessor:
 
             # Log which variants are being processed
             variant_names = list(futures.values())
-            self.logger.info(
+            self.logger.debug(
                 f"Processing {len(variant_names)} configured variants: {variant_names}"
             )
 

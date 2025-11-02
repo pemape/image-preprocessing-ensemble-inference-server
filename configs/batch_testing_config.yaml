@@ -1,0 +1,69 @@
+# Batch Testing Configuration for Fundus Image Classifier
+# This configuration file controls batch testing parameters
+
+# Input/Output Configuration
+input:
+  images_folder: "D:\\FEI STU\\ing\\2roc\\DATABASE\\Aptos\\train_images" # Folder containing test images
+  ground_truth_file: "C:\\ProgrammingProjects\\python\\image-preprocessed-ensemble\\results-archive\\data\\aptos.csv" # Optional CSV file with image_id,true_label columns
+  supported_formats: [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
+  # CSV column configuration
+  csv_columns:
+    image_id_column: "image" # Column name for image identifiers
+    label_column: "DR_grade" # Column name for ground truth labels
+
+output:
+  results_folder: "batch_test_results" # Folder to store test results
+  save_processed_images: false # Whether to save preprocessed images
+  save_individual_results: true # Save individual image results
+
+# Model Configuration
+model:
+  preprocessing_config: "configs/preprocessing_config.yaml"
+  classifier_config: "configs/classifier_config.yaml"
+  voting_strategy: "soft" # soft or hard voting
+
+# Batch Processing Configuration
+batch_processing:
+  batch_size: 32 # Number of images to process at once
+  num_workers: 4 # Number of worker processes for data loading
+  prefetch_factor: 2 # Number of batches to prefetch per worker
+
+# GPU Configuration
+gpu:
+  enabled: true # Enable GPU usage
+  use_data_parallel: true # Use multiple GPUs if available
+  device_ids: [] # Specific GPU IDs to use (empty = use all available)
+  force_cpu: false # Force CPU usage even if GPU available
+
+# Performance Monitoring
+performance:
+  log_interval: 10 # Log progress every N batches
+  save_interval: 50 # Save intermediate results every N batches
+  memory_efficient: true # Use memory efficient processing
+
+# Testing Parameters
+testing:
+  confidence_threshold: 0.5 # Minimum confidence threshold
+  calculate_metrics: true # Calculate accuracy, precision, recall, F1
+  class_names:
+    - "No DR"
+    - "Mild DR"
+    - "Moderate DR"
+    - "Severe DR"
+    - "Proliferative DR"
+  # Label mapping (optional) - map CSV labels to class indices
+  label_mapping:
+    # If your CSV uses different labels, map them here
+    # "healthy": 0
+    # "mild": 1
+    # "moderate": 2
+    # "severe": 3
+    # "proliferative": 4
+
+# Output Format
+report:
+  include_metadata: true # Include testing setup in report
+  include_confusion_matrix: true # Generate confusion matrix
+  include_per_class_metrics: true # Per-class precision, recall, F1
+  include_processing_times: true # Include timing information
+  save_failed_images_list: true # List of images that failed processing

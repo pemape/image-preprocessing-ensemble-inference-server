@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  batch-tester:
+    build:
+      context: .
+      dockerfile: Dockerfile.batch
+    image: fundus-batch-tester:latest
+    container_name: fundus-batch-tester
+    volumes:
+      - ./test-images:/app/test-images
+      - ./batch_test_results:/app/batch_test_results
+      - ./trained-models:/app/trained-models
+      - ./configs:/app/configs
+    environment:
+      - CUDA_VISIBLE_DEVICES=0,1,2,3
+      - PYTHONUNBUFFERED=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: >
+      python3 batch_tester.py 
+      --config configs/batch_testing_config.yaml
+    restart: "no"
+    
+  batch-tester-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.batch
+    image: fundus-batch-tester:latest
+    container_name: fundus-batch-tester-cpu
+    volumes:
+      - ./test-images:/app/test-images
+      - ./batch_test_results:/app/batch_test_results
+      - ./trained-models:/app/trained-models
+      - ./configs:/app/configs
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: >
+      python3 batch_tester.py 
+      --config configs/batch_testing_config.yaml
+      --force-cpu
+    restart: "no"

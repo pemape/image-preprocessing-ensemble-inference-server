@@ -509,23 +509,6 @@ if vessel_enhancement_enabled:
 - Checks channel consistency
 - Validates normalization ranges
 
-## Performance Considerations
-
-### Memory Usage
-- Processing 5 variants simultaneously requires ~5x memory
-- Enable `memory_efficient: true` for sequential processing
-- Use `cache_intermediate: false` to reduce memory footprint
-
-### Processing Speed
-- GPU acceleration available for OpenCV operations
-- Parallel processing of variants when `parallel_variants: true`
-- Typical processing time: 2-5 seconds per image (depending on resolution and hardware)
-
-### Scalability
-- Designed for single-image processing (inference server)
-- Can be extended for batch processing
-- Configurable worker threads for concurrent requests
-
 ## Troubleshooting
 
 ### Common Issues
