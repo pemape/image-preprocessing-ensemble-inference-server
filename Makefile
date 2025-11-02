@@ -22,7 +22,7 @@ OPENAPI_SPEC = api/ensemble-inference.openapi.yaml
 OPENAPI_GENERATOR_IMAGE = openapitools/openapi-generator-cli
 GENERATOR_CONFIG = scripts/generator-cfg.yaml
 PROJECT_ROOT = $(shell cd)
-API_OUTPUT_DIR = api/generated
+API_OUTPUT_DIR = api
 
 .PHONY: help install install-dev setup check test server client demo clean format lint docs preprocess preprocess-debug openapi-generate openapi-validate
 

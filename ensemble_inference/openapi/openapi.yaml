@@ -579,7 +579,11 @@ components:
           predicted_class_label: No Diabetic Retinopathy
           diagnosis_certainty: HIGH
         preprocessed_images:
-          key: preprocessed_images
+          min_pooling: min_pooling
+          original: original
+          rgb_clahe: rgb_clahe
+          lab_clahe: lab_clahe
+          max_green_gsc: max_green_gsc
         status: SUCCESS
       properties:
         status:
@@ -605,12 +609,7 @@ components:
         classification:
           $ref: "#/components/schemas/ClassificationResult"
         preprocessed_images:
-          additionalProperties:
-            format: byte
-            type: string
-          description: Optional - included only if include_encoded_images=true
-          title: preprocessed_images
-          type: object
+          $ref: "#/components/schemas/PreprocessedImages"
       required:
       - cached
       - image_name
@@ -836,125 +835,71 @@ components:
     PreprocessResponse:
       example:
         metadata:
-          processed_size:
-          - 1
-          - 1
-          variant_count: 5
-          original_size:
-          - 6
-          - 6
-        processing_time_seconds: 0.8008282
+          image_properties:
+            original_height_px: 2304
+            original_width_px: 3456
+            processed_width_px: 500
+            processed_height_px: 500
+          processing_time_seconds: 0.8008282
+          variant_count: 6
         preprocessed_images:
+          min_pooling: min_pooling
           original: original
           rgb_clahe: rgb_clahe
           lab_clahe: lab_clahe
           max_green_gsc: max_green_gsc
-          ben_graham: ben_graham
         status: SUCCESS
       properties:
         status:
           $ref: "#/components/schemas/OperationStatus"
-        processing_time_seconds:
-          format: float
-          title: processing_time_seconds
-          type: number
         preprocessed_images:
-          $ref: "#/components/schemas/PreprocessResponse_preprocessed_images"
+          $ref: "#/components/schemas/PreprocessedImages"
         metadata:
           $ref: "#/components/schemas/PreprocessResponse_metadata"
       required:
-      - metadata
-      - processing_time_seconds
       - status
       title: PreprocessResponse
       type: object
-    PredictionResult:
-      example:
-        No DR: 0.85
-        Mild DR: 0.1
-        predicted_class: No DR
-        confidence: 0.85
-        model_info:
-          architectures:
-          - architectures
-          - architectures
-          voting_strategy: soft
-          ensemble_size: 6
-          datasets:
-          - datasets
-          - datasets
-        Moderate DR: 0.03
-        Proliferative DR: 0.01
-        Severe DR: 0.01
-      properties:
-        No DR:
-          example: 0.85
-          format: float
-          title: No DR
-          type: number
-        Mild DR:
-          example: 0.1
-          format: float
-          title: Mild DR
-          type: number
-        Moderate DR:
-          example: 0.03
-          format: float
-          title: Moderate DR
-          type: number
-        Severe DR:
-          example: 0.01
-          format: float
-          title: Severe DR
-          type: number
-        Proliferative DR:
-          example: 0.01
-          format: float
-          title: Proliferative DR
-          type: number
-        predicted_class:
-          example: No DR
-          title: predicted_class
-          type: string
-        confidence:
-          example: 0.85
-          format: float
-          title: confidence
-          type: number
-        model_info:
-          $ref: "#/components/schemas/PredictionResult_model_info"
-      title: PredictionResult
-      type: object
     ClassifyResponse:
       example:
+        cached: false
         classification_time_seconds: 0.8008282
-        prediction:
-          No DR: 0.85
-          Mild DR: 0.1
-          predicted_class: No DR
-          confidence: 0.85
-          model_info:
-            architectures:
-            - architectures
-            - architectures
-            voting_strategy: soft
-            ensemble_size: 6
-            datasets:
-            - datasets
-            - datasets
-          Moderate DR: 0.03
-          Proliferative DR: 0.01
-          Severe DR: 0.01
+        classification:
+          class_probabilities:
+          - probability: 0.85
+            id: DR_0
+            label: No Diabetic Retinopathy
+          - probability: 0.85
+            id: DR_0
+            label: No Diabetic Retinopathy
+          - probability: 0.85
+            id: DR_0
+            label: No Diabetic Retinopathy
+          - probability: 0.85
+            id: DR_0
+            label: No Diabetic Retinopathy
+          - probability: 0.85
+            id: DR_0
+            label: No Diabetic Retinopathy
+          confidence_score: 0.85
+          predicted_class_id: DR_0
+          predicted_class_label: No Diabetic Retinopathy
+          diagnosis_certainty: HIGH
         status: SUCCESS
       properties:
         status:
           $ref: "#/components/schemas/OperationStatus"
+        cached:
+          description: Whether result was retrieved from cache
+          example: false
+          title: cached
+          type: boolean
         classification_time_seconds:
           format: float
           title: classification_time_seconds
           type: number
-        prediction:
-          $ref: "#/components/schemas/PredictionResult"
+        classification:
+          $ref: "#/components/schemas/ClassificationResult"
       title: ClassifyResponse
       type: object
     ProcessResponse:
@@ -1007,7 +952,11 @@ components:
             predicted_class_label: No Diabetic Retinopathy
             diagnosis_certainty: HIGH
           preprocessed_images:
-            key: preprocessed_images
+            min_pooling: min_pooling
+            original: original
+            rgb_clahe: rgb_clahe
+            lab_clahe: lab_clahe
+            max_green_gsc: max_green_gsc
           status: SUCCESS
       properties:
         process_metadata:
@@ -1084,7 +1033,11 @@ components:
             predicted_class_label: No Diabetic Retinopathy
             diagnosis_certainty: HIGH
           preprocessed_images:
-            key: preprocessed_images
+            min_pooling: min_pooling
+            original: original
+            rgb_clahe: rgb_clahe
+            lab_clahe: lab_clahe
+            max_green_gsc: max_green_gsc
           status: SUCCESS
         - image_name: fundus_001.jpg
           image_properties:
@@ -1120,7 +1073,11 @@ components:
             predicted_class_label: No Diabetic Retinopathy
             diagnosis_certainty: HIGH
           preprocessed_images:
-            key: preprocessed_images
+            min_pooling: min_pooling
+            original: original
+            rgb_clahe: rgb_clahe
+            lab_clahe: lab_clahe
+            max_green_gsc: max_green_gsc
           status: SUCCESS
       properties:
         batch_metadata:
@@ -1552,6 +1509,42 @@ components:
       - error
       title: ErrorResponse
       type: object
+    PreprocessedImages:
+      description: Base64-encoded preprocessed image variants
+      example:
+        min_pooling: min_pooling
+        original: original
+        rgb_clahe: rgb_clahe
+        lab_clahe: lab_clahe
+        max_green_gsc: max_green_gsc
+      properties:
+        original:
+          description: Original image after standardization and clipping
+          format: byte
+          title: original
+          type: string
+        rgb_clahe:
+          description: RGB-CLAHE enhanced image
+          format: byte
+          title: rgb_clahe
+          type: string
+        min_pooling:
+          description: Ben Graham/ Min pooling preprocessing variant
+          format: byte
+          title: min_pooling
+          type: string
+        lab_clahe:
+          description: Lab-CLAHE enhanced image
+          format: byte
+          title: lab_clahe
+          type: string
+        max_green_gsc:
+          description: Max Green Grayscale converted image
+          format: byte
+          title: max_green_gsc
+          type: string
+      title: PreprocessedImages
+      type: object
     clearCache_request:
       properties:
         pattern:
@@ -1572,15 +1565,10 @@ components:
       type: object
     classifyImage_request:
       properties:
-        variants:
-          additionalProperties:
-            format: byte
-            type: string
-          description: Base64-encoded preprocessed image variants
-          title: variants
-          type: object
+        preprocessed_images:
+          $ref: "#/components/schemas/PreprocessedImages"
       required:
-      - variants
+      - preprocessed_images
       title: classifyImage_request
       type: object
     fullProcess_request:
@@ -1790,90 +1778,26 @@ components:
           type: integer
       title: ModelInfoResponse_models_inner
       type: object
-    PreprocessResponse_preprocessed_images:
-      description: Optional - Base64-encoded preprocessed image variants (only included
-        if include_encoded_images=true)
-      example:
-        original: original
-        rgb_clahe: rgb_clahe
-        lab_clahe: lab_clahe
-        max_green_gsc: max_green_gsc
-        ben_graham: ben_graham
-      properties:
-        original:
-          format: byte
-          title: original
-          type: string
-        rgb_clahe:
-          format: byte
-          title: rgb_clahe
-          type: string
-        ben_graham:
-          format: byte
-          title: ben_graham
-          type: string
-        lab_clahe:
-          format: byte
-          title: lab_clahe
-          type: string
-        max_green_gsc:
-          format: byte
-          title: max_green_gsc
-          type: string
-      title: PreprocessResponse_preprocessed_images
-      type: object
     PreprocessResponse_metadata:
       example:
-        processed_size:
-        - 1
-        - 1
-        variant_count: 5
-        original_size:
-        - 6
-        - 6
+        image_properties:
+          original_height_px: 2304
+          original_width_px: 3456
+          processed_width_px: 500
+          processed_height_px: 500
+        processing_time_seconds: 0.8008282
+        variant_count: 6
       properties:
-        original_size:
-          items:
-            type: integer
-          title: original_size
-          type: array
-        processed_size:
-          items:
-            type: integer
-          title: processed_size
-          type: array
+        image_properties:
+          $ref: "#/components/schemas/ImageProperties"
+        processing_time_seconds:
+          format: float
+          title: processing_time_seconds
+          type: number
         variant_count:
           title: variant_count
           type: integer
       title: PreprocessResponse_metadata
-      type: object
-    PredictionResult_model_info:
-      example:
-        architectures:
-        - architectures
-        - architectures
-        voting_strategy: soft
-        ensemble_size: 6
-        datasets:
-        - datasets
-        - datasets
-      properties:
-        ensemble_size:
-          title: ensemble_size
-          type: integer
-        architectures:
-          items:
-            type: string
-          title: architectures
-          type: array
-        datasets:
-          items:
-            type: string
-          title: datasets
-          type: array
-        voting_strategy:
-          $ref: "#/components/schemas/VotingStrategyEnum"
-      title: PredictionResult_model_info
       type: object
     BatchPreprocessResponse_results_inner:
       example:

@@ -28,6 +28,12 @@ from ensemble_inference.models.image_processing_times import ImageProcessingTime
 from ensemble_inference.models.classification_result import ClassificationResult
 from ensemble_inference.models.class_probability import ClassProbability
 from ensemble_inference.models.voting_strategy_enum import VotingStrategyEnum
+from ensemble_inference.models.preprocess_response import PreprocessResponse
+from ensemble_inference.models.classify_response import ClassifyResponse
+from ensemble_inference.models.preprocessed_images import PreprocessedImages
+from ensemble_inference.models.preprocess_response_metadata import (
+    PreprocessResponseMetadata,
+)
 
 # Import our modules
 from fundus_preprocessor import FundusPreprocessor
@@ -669,15 +675,17 @@ class FundusInferenceServer:
                 request.args.get("include_encoded_images", "false").lower() == "true"
             )
 
-            response = {
-                "status": "success",
-                "processing_time_seconds": processing_time,
-                "metadata": {
-                    "original_size": list(image.shape[:2]),
-                    "processed_size": list(variants["original"].shape[:2]),
-                    "variant_count": len(variants),
-                },
-            }
+            response = PreprocessResponse()
+            response.status = OperationStatus.SUCCESS
+            response.metadata = PreprocessResponseMetadata()
+            response.metadata.image_properties = ImageProperties(
+                original_width_px=image.shape[1],
+                original_height_px=image.shape[0],
+                processed_width_px=variants["original"].shape[1],
+                processed_height_px=variants["original"].shape[0],
+            )
+            response.metadata.variant_count = len(variants)
+            response.metadata.processing_time_seconds = round(processing_time, 4)
 
             # Conditionally include base64-encoded variants
             if include_encoded_images:
@@ -685,9 +693,13 @@ class FundusInferenceServer:
                 for variant_name, variant_image in variants.items():
                     encoded_image = self._encode_image(variant_image)
                     response_variants[variant_name] = encoded_image
-                response["preprocessed_images"] = response_variants
+                response.preprocessed_images = PreprocessedImages.from_dict(
+                    response_variants
+                )
+            else:
+                response.preprocessed_images = None
 
-            return jsonify(response)
+            return jsonify(response.to_dict())
 
         except Exception as e:
             self.logger.error(f"Preprocessing error: {e}")
@@ -730,13 +742,12 @@ class FundusInferenceServer:
                 results = self.classifier.classify(preprocessed_images)
                 classification_time = time.time() - start_time
 
-                response = {
-                    "status": "success",
-                    "classification_time_seconds": classification_time,
-                    "prediction": results,
-                }
+                response = ClassifyResponse()
+                response.status = OperationStatus.SUCCESS
+                response.classification_time_seconds = round(classification_time, 4)
+                response.classification = self._build_classification_result(results)
 
-                return jsonify(response)
+                return jsonify(response.to_dict())
             finally:
                 # Restore original voting strategy
                 self.classifier.ensemble.voting_strategy = original_strategy
@@ -1514,12 +1525,14 @@ class FundusInferenceServer:
         """Extract preprocessed images from request (base64 encoded)."""
         try:
             data = req.get_json()
-            if not data or "variants" not in data:
+            if not data or "preprocessed_images" not in data:
                 return {}
 
             variants = {}
-            for variant_name, encoded_image in data["variants"].items():
-                decoded_image = self._decode_image(encoded_image)
+            for variant_name, encoded_image in data["preprocessed_images"].items():
+                decoded_image = (
+                    self._decode_image(encoded_image).astype(np.float32) / 255.0
+                )
                 if decoded_image is not None:
                     variants[variant_name] = decoded_image
 

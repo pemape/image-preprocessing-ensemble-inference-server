@@ -42,11 +42,9 @@ ensemble_inference/models/model_configuration.py
 ensemble_inference/models/model_info_response.py
 ensemble_inference/models/model_info_response_models_inner.py
 ensemble_inference/models/operation_status.py
-ensemble_inference/models/prediction_result.py
-ensemble_inference/models/prediction_result_model_info.py
 ensemble_inference/models/preprocess_response.py
 ensemble_inference/models/preprocess_response_metadata.py
-ensemble_inference/models/preprocess_response_preprocessed_images.py
+ensemble_inference/models/preprocessed_images.py
 ensemble_inference/models/process_metadata.py
 ensemble_inference/models/process_response.py
 ensemble_inference/models/process_result.py

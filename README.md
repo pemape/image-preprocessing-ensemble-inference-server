@@ -562,18 +562,6 @@ debug:
 
 This saves intermediate results and creates detailed processing reports for analysis.
 
-## Dependencies
-
-```txt
-opencv-python>=4.5.0
-numpy>=1.19.0
-scikit-image>=0.18.0
-PyYAML>=5.4.0
-Flask>=2.0.0  # For inference server
-Pillow>=8.0.0
-scipy>=1.7.0  # For Frangi filtering
-```
-
 ## System Requirements
 
 ### GPU Support and CUDA Compatibility

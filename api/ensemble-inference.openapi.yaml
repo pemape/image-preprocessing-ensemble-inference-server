@@ -268,14 +268,10 @@ paths:
             schema:
               type: object
               properties:
-                variants:
-                  type: object
-                  description: Base64-encoded preprocessed image variants
-                  additionalProperties:
-                    type: string
-                    format: byte
+                preprocessed_images:
+                  $ref: "#/components/schemas/PreprocessedImages"
               required:
-                - variants
+                - preprocessed_images
       responses:
         "200":
           description: Classification successful
@@ -532,11 +528,8 @@ components:
         classification:
           $ref: "#/components/schemas/ClassificationResult"
         preprocessed_images:
-          type: object
+          $ref: "#/components/schemas/PreprocessedImages"
           description: Optional - included only if include_encoded_images=true
-          additionalProperties:
-            type: string
-            format: byte
       required:
         - status
         - cached
@@ -745,102 +738,36 @@ components:
       properties:
         status:
           $ref: "#/components/schemas/OperationStatus"
-        processing_time_seconds:
-          type: number
-          format: float
         preprocessed_images:
-          type: object
+          $ref: "#/components/schemas/PreprocessedImages"
           description: Optional - Base64-encoded preprocessed image variants (only included if include_encoded_images=true)
-          properties:
-            original:
-              type: string
-              format: byte
-            rgb_clahe:
-              type: string
-              format: byte
-            ben_graham:
-              type: string
-              format: byte
-            lab_clahe:
-              type: string
-              format: byte
-            max_green_gsc:
-              type: string
-              format: byte
         metadata:
           type: object
           properties:
-            original_size:
-              type: array
-              items:
-                type: integer
-            processed_size:
-              type: array
-              items:
-                type: integer
+            image_properties:
+              $ref: "#/components/schemas/ImageProperties"
+            processing_time_seconds:
+              type: number
+              format: float
             variant_count:
               type: integer
       required:
         - status
-        - processing_time_seconds
-        - metadata
-
-    PredictionResult:
-      type: object
-      properties:
-        No DR:
-          type: number
-          format: float
-          example: 0.85
-        Mild DR:
-          type: number
-          format: float
-          example: 0.10
-        Moderate DR:
-          type: number
-          format: float
-          example: 0.03
-        Severe DR:
-          type: number
-          format: float
-          example: 0.01
-        Proliferative DR:
-          type: number
-          format: float
-          example: 0.01
-        predicted_class:
-          type: string
-          example: No DR
-        confidence:
-          type: number
-          format: float
-          example: 0.85
-        model_info:
-          type: object
-          properties:
-            ensemble_size:
-              type: integer
-            architectures:
-              type: array
-              items:
-                type: string
-            datasets:
-              type: array
-              items:
-                type: string
-            voting_strategy:
-              $ref: "#/components/schemas/VotingStrategyEnum"
 
     ClassifyResponse:
       type: object
       properties:
         status:
           $ref: "#/components/schemas/OperationStatus"
+        cached:
+          type: boolean
+          description: Whether result was retrieved from cache
+          example: false
         classification_time_seconds:
           type: number
           format: float
-        prediction:
-          $ref: "#/components/schemas/PredictionResult"
+        classification:
+          $ref: "#/components/schemas/ClassificationResult"
 
     ProcessResponse:
       type: object
@@ -1147,3 +1074,28 @@ components:
           example: Invalid voting_strategy 'invalid'. Must be 'soft' or 'hard'
       required:
         - error
+
+    PreprocessedImages:
+      type: object
+      description: Base64-encoded preprocessed image variants
+      properties:
+        original:
+          type: string
+          format: byte
+          description: Original image after standardization and clipping
+        rgb_clahe:
+          type: string
+          format: byte
+          description: RGB-CLAHE enhanced image
+        min_pooling:
+          type: string
+          format: byte
+          description: Ben Graham/ Min pooling preprocessing variant
+        lab_clahe:
+          type: string
+          format: byte
+          description: Lab-CLAHE enhanced image
+        max_green_gsc:
+          type: string
+          format: byte
+          description: Max Green Grayscale converted image
