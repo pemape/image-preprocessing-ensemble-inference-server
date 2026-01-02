@@ -34,7 +34,6 @@ help: ## Show this help message
 	@echo "  install-dev  - Install development dependencies"
 	@echo "  setup        - Setup project directories"
 	@echo "  preprocess   - Run preprocessing on test image"
-	@echo "  preprocess-batch   - Run preprocessing on test image batch"
 	@echo "  server       - Start inference server"
 	@echo "  server-debug - Start server in debug mode"
 	@echo "  server-redis - Start server with Redis caching enabled"
@@ -316,9 +315,3 @@ preprocess: ## Run fundus preprocessing on test image
 	@echo "Input: $(PREPROCESS_INPUT)"
 	@echo "Config: $(PREPROCESS_CONFIG)"
 	$(PYTHON) fundus_preprocessor.py --config $(PREPROCESS_CONFIG) --input $(PREPROCESS_INPUT)
-
-preprocess-batch: ## Run preprocessing on multiple images (use BATCH_DIR=path)
-	@echo "Running batch preprocessing..."
-	@echo "Batch directory: $(BATCH_DIR)"
-	$(PYTHON) fundus_preprocessor.py --config $(PREPROCESS_CONFIG) --input "$(BATCH_DIR)" --batch
-	@echo "Batch preprocessing completed!"
