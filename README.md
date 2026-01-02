@@ -286,6 +286,29 @@ result = response.json()
 variants = result['processed_variants']
 ```
 
+#### Make targets (server + cache)
+
+You can start the server (and Redis cache) with the bundled Makefile from the repository root:
+
+```bash
+# Start server with defaults (host 0.0.0.0, port 8080, config preprocessing_config.yaml)
+make server
+
+# Start Redis cache in Docker (exposes 6379)
+make redis-start
+
+# Start server with Redis caching enabled (expects Redis running)
+make server-redis
+
+# Stop and remove Redis when finished
+make redis-stop
+make redis-remove
+```
+
+Notes:
+- `make server-redis` uses [configs/preprocessing_config.yaml](configs/preprocessing_config.yaml) and [configs/classifier_config.yaml](configs/classifier_config.yaml) plus `--redis-enabled true` to turn on caching.
+- `make redis-start` pulls the official Redis image and binds it to `localhost:6379`; ensure Docker is running.
+
 #### API Endpoints
 
 The inference server provides several REST API endpoints:
