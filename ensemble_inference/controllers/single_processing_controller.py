@@ -35,7 +35,7 @@ def classify_image(body, voting_strategy=None):  # noqa: E501
 def full_process(image, voting_strategy=None, include_encoded_images=None):  # noqa: E501
     """Full pipeline (preprocess + classify)
 
-    Complete pipeline from raw image to classification result.  **Single Image Only**: This endpoint accepts exactly ONE image. Use &#x60;/batch/process&#x60; for multiple images.  **Caching**: Results are cached with Redis based on image hash and model configuration. Cached responses return near-instant results with &#x60;cached&#x3D;true&#x60; indicator.  # noqa: E501
+    Complete pipeline from raw image to classification result.  **Single Image Only**: This endpoint accepts exactly ONE image.  **Caching**: Results are cached with Redis based on image hash and model configuration. Cached responses return near-instant results with &#x60;cached&#x3D;true&#x60; indicator.  # noqa: E501
 
     :param image: Fundus image file (JPEG, PNG, TIFF) - **SINGLE IMAGE ONLY**
     :type image: str

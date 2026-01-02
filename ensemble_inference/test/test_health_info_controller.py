@@ -7,7 +7,6 @@ from ensemble_inference.models.error_response import ErrorResponse  # noqa: E501
 from ensemble_inference.models.health_response import HealthResponse  # noqa: E501
 from ensemble_inference.models.info_response import InfoResponse  # noqa: E501
 from ensemble_inference.models.model_info_response import ModelInfoResponse  # noqa: E501
-from ensemble_inference.models.stats_response import StatsResponse  # noqa: E501
 from ensemble_inference.test import BaseTestCase
 
 
@@ -54,21 +53,6 @@ class TestHealthInfoController(BaseTestCase):
         }
         response = self.client.open(
             '/models',
-            method='GET',
-            headers=headers)
-        self.assert200(response,
-                       'Response body is : ' + response.data.decode('utf-8'))
-
-    def test_get_stats(self):
-        """Test case for get_stats
-
-        Get server statistics
-        """
-        headers = { 
-            'Accept': 'application/json',
-        }
-        response = self.client.open(
-            '/stats',
             method='GET',
             headers=headers)
         self.assert200(response,

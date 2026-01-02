@@ -27,32 +27,6 @@
             ],
         },
         {
-            "name": "Debug: Preprocess Image Batch",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/fundus_preprocessor.py",
-            "args": [
-                "--config",
-                "configs/preprocessing_config.yaml",
-                "--input",
-                "${workspaceFolder}/test-images/",
-                "--batch",
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "python": "C:\\ProgrammingProjects\\python\\virtualenvs\\.datascience\\Scripts\\python.exe",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}",
-                "VIRTUAL_ENV": "C:\\ProgrammingProjects\\python\\virtualenvs\\.datascience",
-                "PATH": "C:\\ProgrammingProjects\\python\\virtualenvs\\.datascience\\Scripts;${env:PATH}"
-            },
-            "stopOnEntry": false,
-            "justMyCode": true,
-            "purpose": [
-                "debug-in-terminal"
-            ],
-        },
-        {
             "name": "Debug: Inference Server",
             "type": "debugpy",
             "request": "launch",
@@ -139,12 +113,6 @@
             "id": "imageFile",
             "description": "Path to the image file to process",
             "default": "${workspaceFolder}/test-images/00a8624548a9.png",
-            "type": "promptString"
-        },
-        {
-            "id": "batchDirectory",
-            "description": "Path to the directory containing images to batch process",
-            "default": "${workspaceFolder}/test-images/",
             "type": "promptString"
         }
     ]

@@ -301,8 +301,6 @@ The inference server provides several REST API endpoints:
 - `POST /preprocess` - Preprocess image only (returns 5 variants)
 - `POST /classify` - Classify from preprocessed images
 - `POST /process` - Full pipeline (preprocess + classify)
-- `POST /batch/preprocess` - Batch preprocessing
-- `POST /batch/process` - Batch full processing
 
 #### Voting Strategy Query Parameter
 
@@ -553,7 +551,7 @@ This preprocessing pipeline supports GPU acceleration for significantly improved
 
 - **CUDA Version**: 13.0 (tested)
 - **Supported GPUs**: NVIDIA RTX 30/40 series, Tesla, Quadro cards
-- **Minimum GPU Memory**: 4GB VRAM recommended (8GB+ for batch processing)
+- **Minimum GPU Memory**: 4GB VRAM recommended
 - **Driver Version**: 581.57+ (or latest stable)
 
 ## Citation

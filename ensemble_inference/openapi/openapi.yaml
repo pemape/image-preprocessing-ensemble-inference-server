@@ -26,7 +26,6 @@ info:
 
     ### Performance & Scalability
     - **Redis caching**: Hash-based caching with model configuration awareness
-    - **Batch processing**: Process up to 100 images per request
     - **Cache statistics**: Hit/miss tracking and performance metrics
     - **Request tracking**: Unique IDs and UTC timestamps for all operations
 
@@ -40,7 +39,6 @@ info:
 
     All processing responses follow a consistent, structured format:
     - **Single image** (`/process`): Returns `process_metadata` and `process_result`
-    - **Batch processing** (`/batch/process`): Returns `batch_metadata` and `batch_result[]`
     - **Error responses**: Detailed error messages with context and suggestions
 
     ## Query Parameters
@@ -64,105 +62,7 @@ tags:
   name: Cache Management
 - description: Full Pipeline of combined preprocessing and classification
   name: Single processing
-- description: Batch processing endpoints
-  name: Batch Processing
 paths:
-  /batch/preprocess:
-    post:
-      description: Preprocess multiple images in a single request
-      operationId: batch_preprocess
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              $ref: "#/components/schemas/batchPreprocess_request"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BatchPreprocessResponse"
-          description: Batch preprocessing successful
-        "400":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-          description: Invalid request
-        "500":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-          description: Processing error
-      summary: Batch preprocessing
-      tags:
-      - Batch Processing
-      x-openapi-router-controller: ensemble_inference.controllers.batch_processing_controller
-  /batch/process:
-    post:
-      description: |
-        Process multiple images through complete pipeline (preprocess + classify).
-
-        **Batch Size Limit**: Maximum 100 images per request (configurable).
-
-        **Caching**: Each image is checked against Redis cache. Cache hits skip processing.
-        Response includes `cache_stats` showing hits/misses.
-      operationId: batch_process
-      parameters:
-      - description: Ensemble voting strategy for classification
-        examples:
-          soft:
-            summary: Soft voting (probability averaging)
-            value: soft
-          hard:
-            summary: Hard voting (majority vote)
-            value: hard
-        explode: true
-        in: query
-        name: voting_strategy
-        required: false
-        schema:
-          $ref: "#/components/schemas/VotingStrategyEnum"
-        style: form
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              $ref: "#/components/schemas/batchPreprocess_request"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BatchProcessResponse"
-          description: Batch processing successful
-        "400":
-          content:
-            application/json:
-              examples:
-                batchSizeExceeded:
-                  value:
-                    error: Batch size exceeds maximum allowed limit
-                    images_provided: 150
-                    max_batch_size: 100
-                    suggestion: Please split your request into multiple batches of
-                      max 100 images each
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-          description: Invalid request or batch size exceeded
-        "500":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-          description: Processing error
-      summary: Batch full processing
-      tags:
-      - Batch Processing
-      x-openapi-router-controller: ensemble_inference.controllers.batch_processing_controller
   /cache/clear:
     post:
       description: Clear all or pattern-matched cached entries
@@ -414,7 +314,6 @@ paths:
         Complete pipeline from raw image to classification result.
 
         **Single Image Only**: This endpoint accepts exactly ONE image.
-        Use `/batch/process` for multiple images.
 
         **Caching**: Results are cached with Redis based on image hash and model configuration.
         Cached responses return near-instant results with `cached=true` indicator.
@@ -471,8 +370,7 @@ paths:
               examples:
                 multipleImages:
                   value:
-                    error: Single image endpoint accepts only one image. Use /batch/process
-                      for multiple images.
+                    error: Single image endpoint accepts only one image.
                     images_provided: 3
                     max_allowed: 1
               schema:
@@ -651,67 +549,6 @@ components:
       - timestamp_utc
       - version_info
       title: ProcessMetadata
-      type: object
-    BatchMetadata:
-      description: Metadata about the batch processing request
-      example:
-        cache_stats:
-          cache_misses: 15
-          cache_hits: 35
-          cached_percentage: 70.0
-        total_processing_times:
-          per_image_ms: 341.34
-          total_ms: 17067.0
-          preprocessing_ms: 3682.5
-          inference_ms: 13384.5
-        metadata:
-          model_configuration:
-            model_architecture: EfficientNetB4
-            voting_strategy: Soft-Voting
-            ensemble_size: 5
-            trained_datasets:
-            - APTOS-2019-DR-Classification
-          version_info:
-            model_version: 20251030-v2.1
-            api_version: 1.0.0
-        timestamp_utc: 2025-10-30T14:30:22.123Z
-        batch_details:
-          processed_failure: 2
-          processed_successfully: 48
-          batch_size: 50
-        request_id: BATCH-20251030143022-a1b2c3d4
-        status: SUCCESS
-      properties:
-        request_id:
-          description: Unique batch request identifier
-          example: BATCH-20251030143022-a1b2c3d4
-          title: request_id
-          type: string
-        timestamp_utc:
-          description: UTC timestamp in ISO 8601 format
-          example: 2025-10-30T14:30:22.123Z
-          format: date-time
-          title: timestamp_utc
-          type: string
-        status:
-          $ref: "#/components/schemas/OperationStatus"
-        batch_details:
-          $ref: "#/components/schemas/BatchDetails"
-        cache_stats:
-          $ref: "#/components/schemas/CacheStats"
-        total_processing_times:
-          $ref: "#/components/schemas/BatchMetadata_total_processing_times"
-        metadata:
-          $ref: "#/components/schemas/BatchMetadata_metadata"
-      required:
-      - batch_details
-      - cache_stats
-      - metadata
-      - request_id
-      - status
-      - timestamp_utc
-      - total_processing_times
-      title: BatchMetadata
       type: object
     HealthResponse:
       example:
@@ -968,218 +805,22 @@ components:
       - process_result
       title: ProcessResponse
       type: object
-    BatchProcessResponse:
-      description: Response for batch image processing (/batch/process endpoint)
-      example:
-        batch_metadata:
-          cache_stats:
-            cache_misses: 15
-            cache_hits: 35
-            cached_percentage: 70.0
-          total_processing_times:
-            per_image_ms: 341.34
-            total_ms: 17067.0
-            preprocessing_ms: 3682.5
-            inference_ms: 13384.5
-          metadata:
-            model_configuration:
-              model_architecture: EfficientNetB4
-              voting_strategy: Soft-Voting
-              ensemble_size: 5
-              trained_datasets:
-              - APTOS-2019-DR-Classification
-            version_info:
-              model_version: 20251030-v2.1
-              api_version: 1.0.0
-          timestamp_utc: 2025-10-30T14:30:22.123Z
-          batch_details:
-            processed_failure: 2
-            processed_successfully: 48
-            batch_size: 50
-          request_id: BATCH-20251030143022-a1b2c3d4
-          status: SUCCESS
-        batch_result:
-        - image_name: fundus_001.jpg
-          image_properties:
-            original_height_px: 2304
-            original_width_px: 3456
-            processed_width_px: 500
-            processed_height_px: 500
-          cached: false
-          image_index: 0
-          image_processing_times:
-            total_ms: 1137.8
-            preprocessing_ms: 245.5
-            inference_ms: 892.3
-          classification:
-            class_probabilities:
-            - probability: 0.85
-              id: DR_0
-              label: No Diabetic Retinopathy
-            - probability: 0.85
-              id: DR_0
-              label: No Diabetic Retinopathy
-            - probability: 0.85
-              id: DR_0
-              label: No Diabetic Retinopathy
-            - probability: 0.85
-              id: DR_0
-              label: No Diabetic Retinopathy
-            - probability: 0.85
-              id: DR_0
-              label: No Diabetic Retinopathy
-            confidence_score: 0.85
-            predicted_class_id: DR_0
-            predicted_class_label: No Diabetic Retinopathy
-            diagnosis_certainty: HIGH
-          preprocessed_images:
-            min_pooling: min_pooling
-            original: original
-            rgb_clahe: rgb_clahe
-            lab_clahe: lab_clahe
-            max_green_gsc: max_green_gsc
-          status: SUCCESS
-        - image_name: fundus_001.jpg
-          image_properties:
-            original_height_px: 2304
-            original_width_px: 3456
-            processed_width_px: 500
-            processed_height_px: 500
-          cached: false
-          image_index: 0
-          image_processing_times:
-            total_ms: 1137.8
-            preprocessing_ms: 245.5
-            inference_ms: 892.3
-          classification:
-            class_probabilities:
-            - probability: 0.85
-              id: DR_0
-              label: No Diabetic Retinopathy
-            - probability: 0.85
-              id: DR_0
-              label: No Diabetic Retinopathy
-            - probability: 0.85
-              id: DR_0
-              label: No Diabetic Retinopathy
-            - probability: 0.85
-              id: DR_0
-              label: No Diabetic Retinopathy
-            - probability: 0.85
-              id: DR_0
-              label: No Diabetic Retinopathy
-            confidence_score: 0.85
-            predicted_class_id: DR_0
-            predicted_class_label: No Diabetic Retinopathy
-            diagnosis_certainty: HIGH
-          preprocessed_images:
-            min_pooling: min_pooling
-            original: original
-            rgb_clahe: rgb_clahe
-            lab_clahe: lab_clahe
-            max_green_gsc: max_green_gsc
-          status: SUCCESS
-      properties:
-        batch_metadata:
-          $ref: "#/components/schemas/BatchMetadata"
-        batch_result:
-          description: Array of processing results for each image in the batch
-          items:
-            $ref: "#/components/schemas/ProcessResult"
-          title: batch_result
-          type: array
-      required:
-      - batch_metadata
-      - batch_result
-      title: BatchProcessResponse
-      type: object
-    BatchPreprocessResponse:
-      example:
-        batch_size: 0
-        processing_time_seconds: 1.4658129
-        results:
-        - image_name: fundus_001.jpg
-          image_index: 5
-          variants:
-            key: variants
-          error: error
-          status: SUCCESS
-        - image_name: fundus_001.jpg
-          image_index: 5
-          variants:
-            key: variants
-          error: error
-          status: SUCCESS
-        status: SUCCESS
-        successful: 6
-      properties:
-        status:
-          $ref: "#/components/schemas/OperationStatus"
-        batch_size:
-          title: batch_size
-          type: integer
-        successful:
-          title: successful
-          type: integer
-        processing_time_seconds:
-          format: float
-          title: processing_time_seconds
-          type: number
-        results:
-          items:
-            $ref: "#/components/schemas/BatchPreprocessResponse_results_inner"
-          title: results
-          type: array
-      title: BatchPreprocessResponse
-      type: object
-    BatchDetails:
-      example:
-        processed_failure: 2
-        processed_successfully: 48
-        batch_size: 50
-      properties:
-        batch_size:
-          example: 50
-          title: batch_size
-          type: integer
-        processed_successfully:
-          example: 48
-          title: processed_successfully
-          type: integer
-        processed_failure:
-          example: 2
-          title: processed_failure
-          type: integer
-      required:
-      - batch_size
-      - processed_failure
-      - processed_successfully
-      title: BatchDetails
-      type: object
     CacheStats:
-      example:
-        cache_misses: 15
-        cache_hits: 35
-        cached_percentage: 70.0
       properties:
         cache_hits:
           example: 35
-          title: cache_hits
           type: integer
         cache_misses:
           example: 15
-          title: cache_misses
           type: integer
         cached_percentage:
           example: 70.0
           format: float
-          title: cached_percentage
           type: number
       required:
       - cache_hits
       - cache_misses
       - cached_percentage
-      title: CacheStats
       type: object
     CacheStatsResponse:
       example:
@@ -1580,66 +1221,6 @@ components:
       required:
       - image
       type: object
-    batchPreprocess_request:
-      properties:
-        images:
-          description: Multiple fundus image files
-          items:
-            format: binary
-            type: string
-          type: array
-      required:
-      - images
-      type: object
-    BatchMetadata_total_processing_times:
-      example:
-        per_image_ms: 341.34
-        total_ms: 17067.0
-        preprocessing_ms: 3682.5
-        inference_ms: 13384.5
-      properties:
-        preprocessing_ms:
-          example: 3682.5
-          format: float
-          title: preprocessing_ms
-          type: number
-        inference_ms:
-          example: 13384.5
-          format: float
-          title: inference_ms
-          type: number
-        total_ms:
-          example: 17067.0
-          format: float
-          title: total_ms
-          type: number
-        per_image_ms:
-          example: 341.34
-          format: float
-          title: per_image_ms
-          type: number
-      title: BatchMetadata_total_processing_times
-      type: object
-    BatchMetadata_metadata:
-      example:
-        model_configuration:
-          model_architecture: EfficientNetB4
-          voting_strategy: Soft-Voting
-          ensemble_size: 5
-          trained_datasets:
-          - APTOS-2019-DR-Classification
-        version_info:
-          model_version: 20251030-v2.1
-          api_version: 1.0.0
-      properties:
-        version_info:
-          $ref: "#/components/schemas/VersionInfo"
-        model_configuration:
-          $ref: "#/components/schemas/ModelConfiguration"
-      required:
-      - version_info
-      title: BatchMetadata_metadata
-      type: object
     HealthResponse_modules:
       example:
         preprocessor: true
@@ -1798,34 +1379,4 @@ components:
           title: variant_count
           type: integer
       title: PreprocessResponse_metadata
-      type: object
-    BatchPreprocessResponse_results_inner:
-      example:
-        image_name: fundus_001.jpg
-        image_index: 5
-        variants:
-          key: variants
-        error: error
-        status: SUCCESS
-      properties:
-        status:
-          $ref: "#/components/schemas/OperationStatus"
-        image_index:
-          title: image_index
-          type: integer
-        image_name:
-          example: fundus_001.jpg
-          title: image_name
-          type: string
-        variants:
-          additionalProperties:
-            format: byte
-            type: string
-          title: variants
-          type: object
-        error:
-          description: Present only if status is 'failed'
-          title: error
-          type: string
-      title: BatchPreprocessResponse_results_inner
       type: object
