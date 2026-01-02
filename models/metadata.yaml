@@ -1,0 +1,65 @@
+models:
+  lab_clahe:
+    version: "2.0"
+    architecture: efficientnetb4
+    preprocessing: lab_clahe
+    input_shape: [3, 500, 500]
+    num_classes: 5
+    optimizer: Nadam
+    learning_rate: 0.001
+    accuracy: 0.892
+    dvc_file: models/lab_clahe.pt.dvc
+    dvc_hash: c5ccd16d1aa79802459506f4f1f03e1c
+    trained_date: "2023-07-11"
+
+  rgb_clahe:
+    version: "1.5"
+    architecture: efficientnetb4
+    preprocessing: rgb_clahe
+    input_shape: [3, 500, 500]
+    num_classes: 5
+    optimizer: Nadam
+    learning_rate: 0.001
+    accuracy: 0.885
+    dvc_file: models/rgb_clahe.pt.dvc
+    dvc_hash: 64ccf0ec74439cbf4488122338358176
+    trained_date: "2023-08-14"
+
+  min_pooling:
+    version: "1.0"
+    architecture: efficientnetb4
+    preprocessing: ben_graham_30x
+    input_shape: [3, 500, 500]
+    num_classes: 5
+    optimizer: Nadam
+    learning_rate: 0.001
+    accuracy: 0.878
+    dvc_file: models/min_pooling.pt.dvc
+    dvc_hash: 9aeaca5bfa966fab4ab629d386a6a64a
+    trained_date: "2023-07-30"
+
+  original:
+    version: "2.1"
+    architecture: efficientnetb4
+    preprocessing: original
+    input_shape: [3, 500, 500]
+    num_classes: 5
+    optimizer: Nadam
+    learning_rate: 0.001
+    accuracy: 0.881
+    dvc_file: models/original.pt.dvc
+    dvc_hash: 001f847cd15ad7cb2fc5f738afc5203d
+    trained_date: "2023-08-30"
+
+  max_green_gsc:
+    version: "1.2"
+    architecture: efficientnetb4
+    preprocessing: max_green_gsc_clahe
+    input_shape: [3, 500, 500]
+    num_classes: 5
+    optimizer: Nadam
+    learning_rate: 0.001
+    accuracy: 0.890
+    dvc_file: models/max_green_gsc.pt.dvc
+    dvc_hash: 6de7a8271d253e420be2fa552c474b9d
+    trained_date: "2023-09-10"
