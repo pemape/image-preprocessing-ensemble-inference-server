@@ -1,0 +1,5 @@
+outs:
+- md5: c5ccd16d1aa79802459506f4f1f03e1c
+  size: 211699475
+  hash: md5
+  path: lab_clahe.pt

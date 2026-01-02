@@ -6,35 +6,35 @@ models:
   - architecture: efficientnetb4
     dataset: APTOS5
     preprocessing_variant: original
-    model_path: "C:\\ProgrammingProjects\\python\\image-preprocessed-ensemble\\results-archive\\tensorboard_hindawi\\runs_Aptos5\\Original500x500\\EfficientNetB4\\Nadam\\8\\301_08_2023_07_50_40\\Aptos5_8_EfficientNetB4_opt=Nadam_lr=0.001_best_ckp.pt"
+    model_path: "models/original.pt"
     num_classes: 5
     input_size: [500, 500]
 
   - architecture: efficientnetb4
     dataset: APTOS5
     preprocessing_variant: rgb_clahe
-    model_path: "C:\\ProgrammingProjects\\python\\image-preprocessed-ensemble\\results-archive\\tensorboard_hindawi\\runs_Aptos5\\RGBClahe500x500\\EfficientNetB4\\Nadam\\8\\201_08_2023_14_54_36\\Aptos5_8_EfficientNetB4_opt=Nadam_lr=0.001_best_ckp.pt"
+    model_path: "models/rgb_clahe.pt"
     num_classes: 5
     input_size: [500, 500]
 
   - architecture: efficientnetb4
     dataset: APTOS5
     preprocessing_variant: min_pooling
-    model_path: "C:\\ProgrammingProjects\\python\\image-preprocessed-ensemble\\results-archive\\tensorboard_hindawi\\runs_Aptos5\\BenGraham30x500x500\\EfficientNetB4\\Nadam\\8\\301_07_2023_00_08_37\\Aptos5_8_EfficientNetB4_opt=Nadam_lr=0.001_best_ckp.pt"
+    model_path: "models/min_pooling.pt"
     num_classes: 5
     input_size: [500, 500]
 
   - architecture: efficientnetb4
     dataset: APTOS5
     preprocessing_variant: lab_clahe
-    model_path: "C:\\ProgrammingProjects\\python\\image-preprocessed-ensemble\\results-archive\\tensorboard_hindawi\\runs_Aptos5\\LabClahe500x500\\EfficientNetB4\\Nadam\\8\\101_07_2023_07_11_11\\Aptos5_8_EfficientNetB4_opt=Nadam_lr=0.001_best_ckp.pt"
+    model_path: "models/lab_clahe.pt"
     num_classes: 5
     input_size: [500, 500]
 
   - architecture: efficientnetb4
     dataset: APTOS5
     preprocessing_variant: max_green_gsc
-    model_path: "C:\\ProgrammingProjects\\python\\image-preprocessed-ensemble\\results-archive\\tensorboard_hindawi\\runs_Aptos5\\MaxGreenGscClahe500x500\\EfficientNetB4\\Nadam\\8\\101_09_2023_20_38_43\\Aptos5_8_EfficientNetB4_opt=Nadam_lr=0.001_best_ckp.pt"
+    model_path: "models/max_green_gsc.pt"
     num_classes: 5
     input_size: [500, 500]
 
@@ -47,14 +47,11 @@ class_names:
 
 confidence_threshold: 0.5
 
-# Redis Cache Configuration (Optional)
-# If enabled=true but Redis is not available, server will continue without caching
-
 redis:
-  enabled: true # Set to true to enable Redis caching
+  enabled: true
   host: localhost
   port: 6379
   db: 0
-  password: null # Set if Redis requires authentication
-  ttl: 86400 # Time-to-live in seconds (24 hours)
+  password: null
+  ttl: 86400
   key_prefix: fundus_inference

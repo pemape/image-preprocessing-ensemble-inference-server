@@ -1,0 +1,5 @@
+outs:
+- md5: 001f847cd15ad7cb2fc5f738afc5203d
+  size: 211699475
+  hash: md5
+  path: max_green_gsc.pt
