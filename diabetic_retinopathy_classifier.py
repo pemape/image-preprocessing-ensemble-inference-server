@@ -18,6 +18,7 @@ import json
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pretrainedmodels
+import subprocess
 
 
 class XceptionModel(nn.Module):
@@ -263,6 +264,10 @@ class DiabeticRetinopathyClassifier:
         self.config = self._load_config(config_path)
         self.logger = self._setup_logging()
         self.device = self._setup_device()
+
+        # Pull latest models from DVC/Azure Blob
+        print("Syncing models from DVC (Azure Blob Storage)...")
+        subprocess.run(["dvc", "pull", "-q"], check=False)
 
         # Initialize model ensemble
         self.ensemble = self._create_ensemble()
