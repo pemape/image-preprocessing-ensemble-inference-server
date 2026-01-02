@@ -1,5 +1,5 @@
 [core]
-    remote = myblob
+    remote = azure_dvc
 ['remote "mlensembleartifacts"']
     url = azure://staging/BenGraham30x500x500/EfficientNetB4/Nadam/8/301_07_2023_00_08_37/Aptos5_8_EfficientNetB4_opt=Nadam_lr=0.001_best_ckp.pt
 ['remote "ensemblestaging"']
@@ -7,4 +7,8 @@
     connection_string = DefaultEndpointsProtocol=https;AccountName=mlflowartifact2;AccountKey=/JPsaZ2A82JhTF/bqngj97/9hFvghxklC7QtNmNuC3VZf7Wll8xaj9/7vC8C8dQUfraBYeU1iTM8+AStPC2+jA==;EndpointSuffix=core.windows.net
 ['remote "myblob"']
     url = azure://ensemble-preprocessing
+    connection_string = DefaultEndpointsProtocol=https;AccountName=mlflowartifact2;AccountKey=/JPsaZ2A82JhTF/bqngj97/9hFvghxklC7QtNmNuC3VZf7Wll8xaj9/7vC8C8dQUfraBYeU1iTM8+AStPC2+jA==;EndpointSuffix=core.windows.net
+['remote "azure_dvc"']
+    url = azure://ensemble-preprocessing/dvc-storage
+    account_name = mlflowartifact2
     connection_string = DefaultEndpointsProtocol=https;AccountName=mlflowartifact2;AccountKey=/JPsaZ2A82JhTF/bqngj97/9hFvghxklC7QtNmNuC3VZf7Wll8xaj9/7vC8C8dQUfraBYeU1iTM8+AStPC2+jA==;EndpointSuffix=core.windows.net
