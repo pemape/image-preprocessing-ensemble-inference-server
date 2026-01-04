@@ -12,6 +12,15 @@ TEST_IMAGE = test_image.jpg
 OUTPUT_DIR = ./output
 LOG_LEVEL = INFO
 
+# Docker Configuration
+DOCKER_IMAGE_NAME = fundus-inference-server
+DOCKER_IMAGE_TAG = latest
+DOCKER_CONTAINER_NAME = fundus-inference-api
+DOCKER_PORT = 5000
+DOCKER_NETWORK = fundus-network
+DOCKER_REDIS_CONTAINER = fundus-redis
+DOCKER_COMPOSE_FILE = build/docker/docker-compose.yml
+
 # Preprocessing specific variables
 PREPROCESS_CONFIG = configs\preprocessing_config.yaml
 PREPROCESS_INPUT = "./test-images/007-2809-100.jpg"
@@ -24,7 +33,7 @@ GENERATOR_CONFIG = scripts/generator-cfg.yaml
 PROJECT_ROOT = $(shell cd)
 API_OUTPUT_DIR = api
 
-.PHONY: help install install-dev setup check test server client demo clean format lint docs preprocess preprocess-debug openapi-generate openapi-validate
+.PHONY: help install install-dev setup check test server client demo clean format lint docs preprocess preprocess-debug openapi-generate openapi-validate docker-build docker-run docker-stop docker-remove docker-logs
 
 # Default target
 help: ## Show this help message
@@ -56,6 +65,15 @@ help: ## Show this help message
 	@echo "  openapi-generate-python - Generate Python client SDK"
 	@echo "  openapi-generate-docs - Generate HTML documentation"
 	@echo "  openapi-generate-all - Generate all SDKs and documentation"
+	@echo "  compose-up       - Start services using Docker Compose (RECOMMENDED)"
+	@echo "  compose-down     - Stop services using Docker Compose"
+	@echo "  compose-logs     - View Docker Compose logs"
+	@echo "  compose-build    - Build Docker image with Compose"
+	@echo "  docker-build     - Build Docker image (legacy)"
+	@echo "  docker-run       - Run Docker container (legacy)"
+	@echo "  docker-stop      - Stop Docker container (legacy)"
+	@echo "  docker-remove    - Remove Docker container (legacy)"
+	@echo "  docker-logs      - Show Docker container logs (legacy)"
 	@echo "  format       - Format code with black"
 	@echo "  lint         - Run code linting"
 	@echo "  clean        - Clean temporary files"
@@ -204,6 +222,88 @@ openapi-validate: ## Validate OpenAPI specification
 	@echo "Validating OpenAPI specification..."
 	docker run --rm -v "$(PROJECT_ROOT):/local" $(OPENAPI_GENERATOR_IMAGE) validate -i /local/$(OPENAPI_SPEC)
 	@echo "OpenAPI specification is valid!"
+
+# Docker Compose Operations (Recommended)
+compose-build: ## Build Docker image with Docker Compose
+	@echo "Building Docker Compose services..."
+	docker-compose -f $(DOCKER_COMPOSE_FILE) build
+	@echo "Build completed!"
+
+compose-up: ## Start services using Docker Compose (Redis + Inference Server)
+	@echo "Cleaning up old containers..."
+	@docker rm -f fundus-redis fundus-inference-api >nul 2>&1 || true
+	@echo "Starting services with Docker Compose..."
+	docker-compose -f $(DOCKER_COMPOSE_FILE) up -d
+	@echo "Services started!"
+	@echo "  API: http://localhost:5000"
+	@echo "  Redis: localhost:6379"
+	@echo ""
+	@echo "View logs: make compose-logs"
+
+compose-down: ## Stop services using Docker Compose
+	@echo "Stopping services..."
+	docker-compose -f $(DOCKER_COMPOSE_FILE) down
+	@echo "Services stopped"
+
+compose-logs: ## View Docker Compose logs
+	@echo "Showing Docker Compose logs..."
+	docker-compose -f $(DOCKER_COMPOSE_FILE) logs -f
+
+compose-restart: compose-down compose-up ## Restart services with Docker Compose
+
+compose-clean: compose-down ## Clean Docker Compose resources
+	@echo "Cleaning Docker Compose volumes..."
+	docker-compose -f $(DOCKER_COMPOSE_FILE) down -v
+	@echo "Cleanup completed"
+
+# Legacy Docker Operations (Use compose-* instead)
+docker-build: ## Build Docker image for inference server
+	@echo "Building Docker image: $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)"
+	docker build -t $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG) -f build/docker/inference-server/Dockerfile .
+	@echo "Docker image built successfully!"
+	@echo "Note: Use 'make compose-up' for full stack with Redis"
+
+docker-run: ## Run Docker container
+	@echo "Removing old inference server container if exists..."
+	@docker rm -f $(DOCKER_CONTAINER_NAME) >nul 2>&1 || echo "No old container to remove"
+	@echo "Starting Docker container: $(DOCKER_CONTAINER_NAME)..."
+	docker run -d --name $(DOCKER_CONTAINER_NAME) -p $(DOCKER_PORT):5000 \
+		-e REDIS_HOST=$(DOCKER_REDIS_CONTAINER) \
+		$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)
+	@echo "Container running on http://localhost:$(DOCKER_PORT)"
+
+docker-stop: ## Stop Docker container
+	@echo "Stopping Docker container..."
+	docker stop $(DOCKER_CONTAINER_NAME) 2>/dev/null || true
+	@echo "Container stopped"
+
+docker-redis-stop: ## Stop Redis container
+	@echo "Stopping Redis container..."
+	docker stop $(DOCKER_REDIS_CONTAINER) 2>/dev/null || true
+	@echo "Redis stopped"
+
+docker-remove: docker-stop ## Remove Docker container
+	@echo "Removing Docker container..."
+	docker rm $(DOCKER_CONTAINER_NAME) 2>/dev/null || true
+	@echo "Container removed"
+
+docker-redis-remove: docker-redis-stop ## Remove Redis container
+	@echo "Removing Redis container..."
+	docker rm $(DOCKER_REDIS_CONTAINER) 2>/dev/null || true
+	@echo "Redis removed"
+
+docker-logs: ## Show Docker container logs
+	@echo "Showing Docker container logs..."
+	docker logs -f $(DOCKER_CONTAINER_NAME)
+
+docker-redis-logs: ## Show Redis logs
+	@echo "Showing Redis logs..."
+	docker logs -f $(DOCKER_REDIS_CONTAINER)
+
+docker-clean: docker-remove docker-redis-remove ## Clean Docker images and containers
+	@echo "Removing Docker image..."
+	docker rmi $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG) 2>/dev/null || true
+	@echo "Docker cleanup completed"
 
 openapi-generate: ## Generate client SDK from OpenAPI spec (using generator config)
 	@echo "Generating client SDK from OpenAPI specification..."

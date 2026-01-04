@@ -247,19 +247,20 @@ dataset_specific:
 
 ## Setup for Developers
 
-### Prerequisites
+### Option 1: Docker Deployment (Recommended)
 
-1. **Install Python dependencies:**
+Fastest way to get started - see [Docker Deployment](#docker-deployment-recommended-for-production) section above.
+
+### Option 2: Local Development Setup
+
+#### Prerequisites
+
+1. **Install Python dependencies (includes DVC):**
    ```bash
    pip install -r requirements.txt
    ```
 
-2. **Install DVC (Data Version Control):**
-   ```bash
-   pip install dvc dvc-azure
-   ```
-
-3. **Configure Azure Blob Storage access:**
+2. **Configure Azure Blob Storage access:**
 
    Set your Azure Storage connection string as an environment variable:
 
@@ -275,7 +276,7 @@ dataset_specific:
 
    Or add to your shell profile (`.bashrc`, `.zshrc`, etc.) for persistence.
 
-4. **Pull models from Azure Blob Storage:**
+3. **Pull models from Azure Blob Storage:**
    ```bash
    dvc pull
    ```
@@ -283,7 +284,7 @@ dataset_specific:
    This downloads all trained models from Azure Blob Storage to your local `models/` directory.
    The models are tracked by DVC and not stored in Git (only `.dvc` metadata files are in Git).
 
-5. **Verify models were downloaded:**
+4. **Verify models were downloaded:**
    ```bash
    # Windows
    dir models\*.pt
@@ -350,14 +351,16 @@ max_green_gsc = processed_variants['max_green_gsc']
 
 ```python
 # Start the inference server
-python fundus_inference_server.py --config preprocessing_config.yaml --port 8080
+python fundus_inference_server.py \
+    --preprocessing-config configs/preprocessing_config.yaml \
+    --classifier-config configs/classifier_config.yaml \
+    --host 0.0.0.0 --port 5000
 
 # Send image for processing
 import requests
-import numpy as np
 
 files = {'image': open('fundus_image.jpg', 'rb')}
-response = requests.post('http://localhost:8080/process', files=files)
+response = requests.post('http://localhost:5000/process', files=files)
 result = response.json()
 
 # Result contains all 5 processed variants
@@ -369,7 +372,7 @@ variants = result['processed_variants']
 You can start the server (and Redis cache) with the bundled Makefile from the repository root:
 
 ```bash
-# Start server with defaults (host 0.0.0.0, port 8080, config preprocessing_config.yaml)
+# Start server with defaults (host 0.0.0.0, port 5000)
 make server
 
 # Start Redis cache in Docker (exposes 6379)
@@ -386,6 +389,89 @@ make redis-remove
 Notes:
 - `make server-redis` uses [configs/preprocessing_config.yaml](configs/preprocessing_config.yaml) and [configs/classifier_config.yaml](configs/classifier_config.yaml) plus `--redis-enabled true` to turn on caching.
 - `make redis-start` pulls the official Redis image and binds it to `localhost:6379`; ensure Docker is running.
+
+### Docker Deployment (Recommended for Production)
+
+The project includes Docker Compose configuration for easy deployment with Redis caching and GPU support.
+
+#### Quick Start with Docker Compose
+
+**Location**: All Docker files are in [build/docker/](build/docker/) directory:
+- `Dockerfile` - Container image definition
+- `docker-compose.yml` - Multi-container orchestration
+
+**Build and start all services (API + Redis):**
+```bash
+make compose-build  # Build Docker image
+make compose-up     # Start Redis + inference server
+```
+
+The services will be available at:
+- **API Server**: http://localhost:5000
+- **Redis Cache**: localhost:6379
+
+**View logs:**
+```bash
+make compose-logs   # Follow logs from all services
+```
+
+**Stop services:**
+```bash
+make compose-down   # Stop and remove containers
+```
+
+**Clean up (including volumes):**
+```bash
+make compose-clean  # Remove containers and Redis data volume
+```
+
+#### Docker Configuration
+
+**GPU Support** (Optional):
+The docker-compose.yml includes GPU configuration that's commented out by default for maximum compatibility:
+
+```yaml
+# Uncomment in build/docker/docker-compose.yml to enable GPU:
+deploy:
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: 1
+          capabilities: [gpu]
+```
+
+**Prerequisites for GPU**:
+- NVIDIA GPU with CUDA 12.1+ drivers
+- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) installed
+- Uncomment the `deploy:` section in [build/docker/docker-compose.yml](build/docker/docker-compose.yml)
+
+**Environment Variables**:
+The inference server reads Redis configuration from environment (set in docker-compose.yml):
+- `REDIS_HOST=redis` - Redis container hostname
+- `REDIS_PORT=6379` - Redis port
+- `PYTHONUNBUFFERED=1` - Immediate log output
+
+#### Legacy Docker Commands
+
+For manual container management without Docker Compose:
+
+```bash
+# Build image only
+make docker-build
+
+# Run container (without Redis)
+make docker-run
+
+# View container logs
+make docker-logs
+
+# Stop and remove
+make docker-stop
+make docker-remove
+```
+
+**Note**: Use `make compose-*` commands instead for full stack with Redis integration.
 
 #### API Endpoints
 
@@ -646,14 +732,47 @@ This saves intermediate results and creates detailed processing reports for anal
 
 ## System Requirements
 
+### Hardware Requirements
+
+**Minimum:**
+- CPU: 4 cores
+- RAM: 8GB
+- Storage: 10GB for models and dependencies
+
+**Recommended:**
+- CPU: 8+ cores
+- RAM: 16GB+
+- Storage: 20GB+
+- GPU: NVIDIA with 4GB+ VRAM (optional, for GPU acceleration)
+
 ### GPU Support and CUDA Compatibility
 
 This preprocessing pipeline supports GPU acceleration for significantly improved performance:
 
-- **CUDA Version**: 13.0 (tested)
-- **Supported GPUs**: NVIDIA RTX 30/40 series, Tesla, Quadro cards
+**Docker Deployment (Recommended):**
+- **CUDA Version**: 12.1 or 13.0 (configurable in Dockerfile)
+- **Docker Image**: Python 3.11-slim with PyTorch CUDA wheels
+- **GPU Runtime**: Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
 - **Minimum GPU Memory**: 4GB VRAM recommended
-- **Driver Version**: 581.57+ (or latest stable)
+- **Tested GPUs**: NVIDIA RTX 30/40 series, Tesla, Quadro cards
+
+**CPU Fallback**: The application automatically falls back to CPU if GPU is unavailable. Both deployment modes work identically, with GPU providing ~10x faster inference.
+
+**To enable GPU in Docker:**
+1. Install NVIDIA Container Toolkit on your host
+2. Uncomment GPU configuration in [build/docker/docker-compose.yml](build/docker/docker-compose.yml)
+3. Rebuild: `make compose-build && make compose-up`
+
+### Software Requirements
+
+**Docker Desktop** (Required for containerized deployment):
+- **Windows/Mac**: [Docker Desktop](https://www.docker.com/products/docker-desktop/) - Includes Docker Engine and Docker Compose
+- **Linux**: [Docker Engine](https://docs.docker.com/engine/install/) + [Docker Compose](https://docs.docker.com/compose/install/)
+- Note: Docker Desktop for Windows requires WSL 2 backend
+
+**Other Requirements**:
+- **Python**: 3.11+ (for local development only, not needed for Docker)
+- **Make**: For using Makefile commands (Windows: install via [Chocolatey](https://chocolatey.org/) or use Git Bash)
 
 ## Citation
 

@@ -1,0 +1,61 @@
+services:
+  # Redis Cache Service
+  redis:
+    image: redis:latest
+    container_name: fundus-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - fundus-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+
+  # Fundus Inference Server
+  inference-server:
+    build:
+      context: ../..
+      dockerfile: build/docker/inference-server/Dockerfile
+    container_name: fundus-inference-api
+    ports:
+      - "5000:5000"
+    networks:
+      - fundus-network
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      redis:
+        condition: service_healthy
+    # GPU Configuration (optional - comment out if GPU/NVIDIA drivers not available)
+    # Uncomment the lines below to enable GPU support:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ../../models:/app/models
+      - ../../configs:/app/configs
+      - ../../logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+
+networks:
+  fundus-network:
+    driver: bridge
+
+volumes:
+  redis-data:

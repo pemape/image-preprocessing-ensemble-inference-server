@@ -13,6 +13,7 @@ import hashlib
 import logging
 from typing import Optional, Dict, Any
 import numpy as np
+import os
 
 # Try to import Redis, but make it optional
 try:
@@ -48,18 +49,19 @@ class RedisCacheManager:
 
         Args:
             enabled: Whether caching is enabled
-            host: Redis host
-            port: Redis port
+            host: Redis host (can be overridden by REDIS_HOST env var)
+            port: Redis port (can be overridden by REDIS_PORT env var)
             db: Redis database number
-            password: Redis password (optional)
+            password: Redis password (optional, can be overridden by REDIS_PASSWORD env var)
             ttl: Time-to-live for cached entries in seconds (default: 24 hours)
             key_prefix: Prefix for all cache keys
         """
+        # Allow environment variables to override defaults
         self.enabled = enabled
-        self.host = host
-        self.port = port
+        self.host = os.getenv("REDIS_HOST", host)
+        self.port = int(os.getenv("REDIS_PORT", port))
         self.db = db
-        self.password = password
+        self.password = os.getenv("REDIS_PASSWORD", password)
         self.ttl = ttl
         self.key_prefix = key_prefix
         self.logger = logging.getLogger(self.__class__.__name__)
