@@ -3,4 +3,4 @@
 ['remote "azure_dvc"']
     url = azure://ensemble-preprocessing/dvc-storage
     account_name = mlflowartifact2
-    connection_string = DefaultEndpointsProtocol=https;AccountName=mlflowartifact2;AccountKey=/JPsaZ2A82JhTF/bqngj97/9hFvghxklC7QtNmNuC3VZf7Wll8xaj9/7vC8C8dQUfraBYeU1iTM8+AStPC2+jA==;EndpointSuffix=core.windows.net
+    connection_string = BlobEndpoint=https://mlflowartifact2.blob.core.windows.net/;QueueEndpoint=https://mlflowartifact2.queue.core.windows.net/;FileEndpoint=https://mlflowartifact2.file.core.windows.net/;TableEndpoint=https://mlflowartifact2.table.core.windows.net/;SharedAccessSignature=sv=2024-11-04&ss=b&srt=sco&sp=rltfx&se=2026-12-31T20:48:39Z&st=2026-01-04T12:33:39Z&spr=https&sig=Lj242zfAAYvzY4tyEG7iJgd%2FORmYzGUas3bVf7l1d6U%3D
