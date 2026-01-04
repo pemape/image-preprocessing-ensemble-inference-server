@@ -245,6 +245,84 @@ dataset_specific:
       clip_limit: 3.5
 ```
 
+## Setup for Developers
+
+### Prerequisites
+
+1. **Install Python dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Install DVC (Data Version Control):**
+   ```bash
+   pip install dvc dvc-azure
+   ```
+
+3. **Configure Azure Blob Storage access:**
+
+   Set your Azure Storage connection string as an environment variable:
+
+   **Windows (PowerShell):**
+   ```powershell
+   $env:AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=mlflowartifact2;AccountKey=<YOUR_KEY>;EndpointSuffix=core.windows.net"
+   ```
+
+   **Linux/Mac:**
+   ```bash
+   export AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=mlflowartifact2;AccountKey=<YOUR_KEY>;EndpointSuffix=core.windows.net"
+   ```
+
+   Or add to your shell profile (`.bashrc`, `.zshrc`, etc.) for persistence.
+
+4. **Pull models from Azure Blob Storage:**
+   ```bash
+   dvc pull
+   ```
+
+   This downloads all trained models from Azure Blob Storage to your local `models/` directory.
+   The models are tracked by DVC and not stored in Git (only `.dvc` metadata files are in Git).
+
+5. **Verify models were downloaded:**
+   ```bash
+   # Windows
+   dir models\*.pt
+
+   # Linux/Mac
+   ls models/*.pt
+   ```
+
+   You should see:
+   - `models/original.pt`
+   - `models/rgb_clahe.pt`
+   - `models/min_pooling.pt`
+   - `models/lab_clahe.pt`
+   - `models/max_green_gsc.pt`
+
+### Running the Inference Server
+
+Once models are downloaded, start the server:
+
+```bash
+python fundus_inference_server.py --preprocessing-config configs/preprocessing_config.yaml --classifier-config configs/classifier_config.yaml --host 0.0.0.0 --port 5000
+```
+
+Or use the Makefile:
+```bash
+make server
+```
+
+**Note:** The server automatically runs `dvc pull` on startup to ensure models are up-to-date.
+
+### Updating Models
+
+When new model versions are available:
+```bash
+dvc pull
+```
+
+The server will load the latest models on next restart.
+
 ## Usage
 
 ### Python Script Usage
@@ -590,8 +668,3 @@ If you use this preprocessing pipeline in your research, please cite the origina
   url={https://ietresearch.onlinelibrary.wiley.com/doi/full/10.1049/ipr2.12987}
 }
 ```
-
-## License
-
-This preprocessing configuration system is part of the LBCNN PyTorch project. Please refer to the main project license for usage terms.
-````
