@@ -725,6 +725,23 @@ if vessel_enhancement_enabled:
    - Reduce number of variants
    - Optimize worker thread count
 
+5. **`dvc pull` Fails with `attempt to write a readonly database`**
+   - This is usually a **local write-permission issue**, not a remote (Azure) read-only issue.
+   - `dvc pull` always writes locally to `.dvc/tmp/` and the local DVC cache/state DB.
+   - Common causes:
+     - `.dvc/tmp` is read-only
+     - `.dvc/tmp/state` (SQLite DB) is read-only
+     - Repository was copied from ZIP/another OS/container with restrictive attributes
+     - Windows filesystem permission mismatch
+     - Running from a read-only mounted path
+   - Safe first fix (DVC recreates tmp files automatically):
+     ```powershell
+     rm -r .dvc/tmp
+     ```
+     Then run:
+     `dvc pull`
+     Check downloaded models in models dir.
+
 ### Debug Mode
 
 Enable comprehensive debugging:
