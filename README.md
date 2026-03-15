@@ -191,6 +191,11 @@ def canny(img)                               # Canny edge detection
 
 ## Configuration Examples
 
+This section references the configuration file `configs/preprocessing_config.yaml`, which contains preprocessing settings for the image preprocessing ensemble inference server.
+Use this file to customize preprocessing steps such as resizing, normalization, augmentation, and other image transformations required before inference.
+Ensure the configuration aligns with your model requirements and data pipeline.
+For detailed parameter descriptions and examples, refer to the documentation or comments within the YAML file.
+
 ### Basic Configuration for Research Replication
 ```yaml
 # Minimal configuration matching the paper
@@ -564,6 +569,8 @@ response = requests.post(
 ```
 
 ## Advanced Configuration
+
+This section references the configuration file `configs/preprocessing_config.yaml`.
 
 ### Ensemble Model Integration
 ```yaml
