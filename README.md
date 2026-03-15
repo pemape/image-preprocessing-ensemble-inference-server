@@ -268,6 +268,7 @@ Fastest way to get started - see [Docker Deployment](#docker-deployment-recommen
 2. **Configure Azure Blob Storage access:**
 
    Set your Azure Storage connection string as an environment variable:
+   *** Contact admin to get <YOUR_KEY> ***
 
    **Windows (PowerShell):**
    ```powershell
@@ -811,3 +812,7 @@ If you use this preprocessing pipeline in your research, please cite the origina
   url={https://ietresearch.onlinelibrary.wiley.com/doi/full/10.1049/ipr2.12987}
 }
 ```
+
+## Admin
+
+peter.macsik@stuba.sk
