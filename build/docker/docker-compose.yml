@@ -23,7 +23,7 @@ services:
       dockerfile: build/docker/inference-server/Dockerfile
     container_name: fundus-inference-api
     ports:
-      - "5000:5000"
+      - "${INFERENCE_HOST_PORT:-5000}:5000"
     networks:
       - fundus-network
     environment:

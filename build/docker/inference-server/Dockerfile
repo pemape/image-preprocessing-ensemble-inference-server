@@ -1,5 +1,5 @@
 # Fundus Inference Server - Flask API Docker Image
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -23,22 +23,8 @@ RUN pip install --upgrade pip setuptools wheel && \
     pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu130 && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy application files
-COPY fundus_preprocessor.py .
-COPY diabetic_retinopathy_classifier.py .
-COPY fundus_inference_server.py .
-COPY redis_cache_manager.py .
-
-# Copy ensemble inference module
-COPY ensemble_inference/ ./ensemble_inference/
-
-# Copy configuration files
-COPY configs/ ./configs/
-
-# Copy DVC configuration for pulling models
-COPY .dvc/ ./.dvc/
-COPY .dvcignore .
-COPY models/ ./models/
+# Copy the rest of the flask-app sources
+COPY . .
 
 # Create necessary directories for models and logs
 RUN mkdir -p /app/models /app/logs
