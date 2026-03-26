@@ -34,6 +34,7 @@ services:
       redis:
         condition: service_healthy
     # GPU Configuration (optional - comment out if GPU/NVIDIA drivers not available)
+    # Uncomment the lines below to enable GPU support:
     deploy:
       resources:
         reservations:

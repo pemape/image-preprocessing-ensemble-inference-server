@@ -1,0 +1,51 @@
+{
+    "name": "Fundus Inference Server Dev",
+    // Use the project's docker-compose stack so DB and mock-api start alongside the dev container
+    "dockerComposeFile": "../build/docker/docker-compose.yml",
+    "service": "inference-server",
+    "features": {
+        "ghcr.io/devcontainers/features/git:1": {},
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+    },
+    "workspaceFolder": "/app",
+    "remoteUser": "root",
+    "forwardPorts": [
+        5000,
+        6379
+    ],
+    "portsAttributes": {
+        "5000": {
+            "label": "Inference API"
+        },
+        "6379": {
+            "label": "Redis"
+        }
+    },
+    "containerEnv": {
+        "PYTHONUNBUFFERED": "1",
+        "PIP_DISABLE_PIP_VERSION_CHECK": "1"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "ms-python.black-formatter",
+                "ms-python.flake8",
+                "ms-toolsai.jupyter",
+                "ms-azuretools.vscode-docker"
+            ],
+            "settings": {
+                "python.defaultInterpreterPath": "/usr/local/bin/python",
+                "python.testing.pytestEnabled": true,
+                "python.testing.pytestArgs": [
+                    "_Tests"
+                ],
+                "python.formatting.provider": "none",
+                "editor.formatOnSave": true,
+                "editor.defaultFormatter": "ms-python.black-formatter"
+            }
+        }
+    },
+    "postCreateCommand": "python -m pip install --upgrade pip setuptools wheel"
+}
