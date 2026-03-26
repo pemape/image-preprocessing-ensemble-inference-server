@@ -1,0 +1,321 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Preprocess Image",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "fundus_preprocessor.py",
+                "--config",
+                "configs/preprocessing_config.yaml",
+                "--input",
+                "D:\\FEI STU\\ing\\2roc\\DATABASE\\Aptos\\train_images\\00a8624548a9.png",
+                "--output",
+                "./processed_images"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "new"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Preprocess Image (Debug)",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "fundus_preprocessor.py",
+                "--config",
+                "configs/preprocessing_config.yaml",
+                "--input",
+                "D:\\FEI STU\\ing\\2roc\\DATABASE\\Aptos\\train_images\\00a8624548a9.png",
+                "--output",
+                "./processed_images",
+                "--debug"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "new"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Start Inference Server",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "fundus_inference_server.py",
+                "--preprocessing-config",
+                "configs/preprocessing_config.yaml",
+                "--classifier-config",
+                "configs/classifier_config.yaml",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "5000"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "new"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "isBackground": true,
+            "problemMatcher": []
+        },
+        {
+            "label": "Start Server (Debug Mode)",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "fundus_inference_server.py",
+                "--preprocessing-config",
+                "configs/preprocessing_config.yaml",
+                "--classifier-config",
+                "configs/classifier_config.yaml",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "5000",
+                "--debug",
+                "--log-level",
+                "DEBUG"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "new"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "isBackground": true,
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Tests",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "-m",
+                "pytest",
+                "_Tests/",
+                "-v"
+            ],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "new"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Test: Fixed Preprocessor",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "_Tests/test_fixed_preprocessor.py"
+            ],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "new"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Test Configuration",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "-c",
+                "import yaml; yaml.safe_load(open('configs/preprocessing_config.yaml', 'r')); print('✓ Preprocessing config is valid'); yaml.safe_load(open('configs/classifier_config.yaml', 'r')); print('✓ Classifier config is valid')"
+            ],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "new"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Format Code (Black)",
+            "type": "shell",
+            "command": "black",
+            "args": [
+                ".",
+                "--line-length=100"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Lint Code (Flake8)",
+            "type": "shell",
+            "command": "flake8",
+            "args": [
+                ".",
+                "--max-line-length=100",
+                "--ignore=E203,W503"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Install Dependencies",
+            "type": "shell",
+            "command": "pip",
+            "args": [
+                "install",
+                "-r",
+                "requirements.txt"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "new"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Clean Outputs",
+            "type": "shell",
+            "command": "cmd",
+            "args": [
+                "/c",
+                "if exist processed_images rmdir /s /q processed_images && if exist debug rmdir /s /q debug && if exist client_output rmdir /s /q client_output && echo Cleaned output directories"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Build Docker Image",
+            "type": "shell",
+            "command": "docker",
+            "args": [
+                "build",
+                "-t",
+                "fundus-inference:latest",
+                "."
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "new"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Docker Container",
+            "type": "shell",
+            "command": "docker-compose",
+            "args": [
+                "up",
+                "--build"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "new"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "isBackground": true,
+            "problemMatcher": []
+        },
+        {
+            "label": "Enable Debug Mode in Config",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "-c",
+                "import yaml; config = yaml.safe_load(open('configs/preprocessing_config.yaml', 'r')); config.setdefault('debug', {}).update({'verbose_logging': True, 'save_intermediate_images': True, 'log_processing_time': True}); yaml.dump(config, open('configs/preprocessing_config.yaml', 'w'), default_flow_style=False, indent=2); print('✓ Debug mode enabled in config')"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        }
+    ]
+}

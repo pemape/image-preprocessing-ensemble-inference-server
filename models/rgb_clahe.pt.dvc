@@ -1,0 +1,5 @@
+outs:
+- md5: 6de7a8271d253e420be2fa552c474b9d
+  size: 211699475
+  hash: md5
+  path: rgb_clahe.pt

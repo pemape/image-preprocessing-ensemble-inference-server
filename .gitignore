@@ -1,0 +1,7 @@
+__pycache__
+test-images/
+trained-models/
+final_resized_processed_images
+# Ignore actual model files but allow DVC metadata
+/models/*.pt
+!/models/*.dvc

@@ -1,0 +1,5 @@
+outs:
+- md5: 64ccf0ec74439cbf4488122338358176
+  size: 211699475
+  hash: md5
+  path: min_pooling.pt

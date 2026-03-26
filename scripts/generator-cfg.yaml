@@ -1,0 +1,8 @@
+generatorName: python-flask
+outputDir: /local
+inputSpec: /local/api/ensemble-inference.openapi.yaml
+enablePostProcessFile: true
+additionalProperties:
+  apiPath: internal/ensemble_inference
+  packageName: ensemble_inference
+  interfaceOnly: true
