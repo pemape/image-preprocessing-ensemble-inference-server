@@ -479,6 +479,46 @@ make docker-remove
 
 **Note**: Use `make compose-*` commands instead for full stack with Redis integration.
 
+## GitHub Actions Release Pipeline (Docker Hub)
+
+This repository includes a production-focused workflow at [.github/workflows/dockerhub-release.yml](.github/workflows/dockerhub-release.yml).
+
+### Trigger
+
+The workflow runs when you push a semantic tag like `v1.2.3`.
+
+```bash
+git checkout main
+git pull
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+The workflow validates that the tagged commit belongs to `main` before building and publishing.
+
+### Required GitHub Settings
+
+Set these in your GitHub repository settings before releasing:
+
+1. **Repository Secrets and variables -> Actions -> Secrets**
+  - `DOCKERHUB_USERNAME`: your Docker Hub username
+  - `DOCKERHUB_TOKEN`: Docker Hub access token (use a token, not password)
+2. **Repository Secrets and variables -> Actions -> Variables**
+  - `DOCKERHUB_REPOSITORY`: target repository path, for example `mydockeruser/fundus-inference`
+
+### What the Workflow Does
+
+1. Verifies the release tag points to a commit reachable from `main`
+2. Builds the Docker image from `build/docker/inference-server/Dockerfile`
+3. Pushes the image to Docker Hub with release tags
+4. Publishes `latest` for tagged releases
+
+### Production Notes
+
+1. Prefer immutable deployment tags (for example `v1.2.3`) instead of `latest`
+2. Protect the `main` branch and require PR reviews before tagging
+3. Rotate `DOCKERHUB_TOKEN` periodically
+
 #### API Endpoints
 
 The inference server provides several REST API endpoints:

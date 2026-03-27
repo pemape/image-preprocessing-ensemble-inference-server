@@ -34,6 +34,7 @@
                 "ms-python.flake8",
                 "ms-toolsai.jupyter",
                 "ms-azuretools.vscode-docker"
+                // "github.vscode-github-actions"
             ],
             "settings": {
                 "python.defaultInterpreterPath": "/usr/local/bin/python",
@@ -46,6 +47,5 @@
                 "editor.defaultFormatter": "ms-python.black-formatter"
             }
         }
-    },
-    "postCreateCommand": "python -m pip install --upgrade pip setuptools wheel"
+    }
 }
