@@ -1,5 +1,7 @@
 # Fundus Image Preprocessing Configuration for Ensemble Model
 
+[![Docker Hub](https://img.shields.io/docker/pulls/ppetermm/image-preprocessing-ensemble-dr-classifier-service?logo=docker&label=Docker%20Hub)](https://hub.docker.com/r/ppetermm/image-preprocessing-ensemble-dr-classifier-service)
+
 This repository implements the preprocessing pipeline described in the paper **"Image preprocessing-based ensemble deep learning classification of diabetic retinopathy"** ([IET Image Processing, 2024](https://ietresearch.onlinelibrary.wiley.com/doi/full/10.1049/ipr2.12987)).
 
 ## Overview
