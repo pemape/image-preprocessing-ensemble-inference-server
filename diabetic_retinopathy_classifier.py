@@ -142,90 +142,124 @@ class ModelEnsemble:
             )
             return None
 
-    def predict(self, images: Dict[str, np.ndarray]) -> Dict[str, float]:
+    def predict(
+        self, images: Dict[str, np.ndarray], voting_strategy: Optional[str] = None
+    ) -> Dict[str, float]:
         """
-        Predict using ensemble of models.
+        Predict using ensemble of models for a single request.
 
         Args:
             images: Dictionary of preprocessed image variants
+            voting_strategy: Optional voting strategy override
 
         Returns:
             Dictionary with class probabilities
         """
+        return self.predict_batch([images], voting_strategy=voting_strategy)[0]
+
+    def predict_batch(
+        self,
+        images_batch: List[Dict[str, np.ndarray]],
+        voting_strategy: Optional[str] = None,
+    ) -> List[Dict[str, float]]:
+        """
+        Predict using ensemble of models for a batch of requests.
+
+        Args:
+            images_batch: List of dictionaries of preprocessed image variants
+            voting_strategy: Optional voting strategy override
+
+        Returns:
+            List of classification result dictionaries
+        """
         if not self.models:
             raise ValueError("No models loaded in ensemble")
+        if not images_batch:
+            return []
 
-        all_predictions = []
+        strategy = voting_strategy or self.voting_strategy
+        all_predictions_per_request: List[List[np.ndarray]] = [
+            [] for _ in range(len(images_batch))
+        ]
 
         for model_info in self.models:
             model = model_info["model"]
             config = model_info["config"]
 
-            # Get the appropriate preprocessing variant for this model
+            selected_indices: List[int] = []
+            selected_images: List[np.ndarray] = []
+
             preprocessing_variant = config.get("preprocessing_variant", "original")
 
-            if preprocessing_variant not in images:
-                self.logger.warning(
-                    f"Preprocessing variant '{preprocessing_variant}' not found, using 'original'"
-                )
-                preprocessing_variant = "original"
+            for req_idx, images in enumerate(images_batch):
+                variant_name = preprocessing_variant
+                if variant_name not in images:
+                    variant_name = "original"
 
-            if preprocessing_variant not in images:
-                self.logger.error("No suitable image variant found for prediction")
+                if variant_name not in images:
+                    self.logger.warning(
+                        "No suitable image variant found for request index %s",
+                        req_idx,
+                    )
+                    continue
+
+                selected_indices.append(req_idx)
+                selected_images.append(images[variant_name])
+
+            if not selected_images:
                 continue
 
             try:
-                # Prepare image for this model
-                image = images[preprocessing_variant]
-                input_tensor = self._prepare_input(image, config)
+                input_tensor = self._prepare_batch_input(selected_images, config)
 
-                # Get prediction
                 with torch.no_grad():
                     logits = model(input_tensor)
-                    probabilities = F.softmax(logits, dim=1)
-                    all_predictions.append(probabilities.cpu().numpy()[0])
+                    probabilities = F.softmax(logits, dim=1).cpu().numpy()
 
+                for local_idx, req_idx in enumerate(selected_indices):
+                    all_predictions_per_request[req_idx].append(probabilities[local_idx])
             except Exception as e:
                 self.logger.error(
                     f"Prediction failed for model {config.get('model_path', 'unknown')}: {e}"
                 )
 
-        if not all_predictions:
-            raise ValueError("No successful predictions from ensemble")
+        results: List[Dict[str, float]] = []
+        for req_idx, all_predictions in enumerate(all_predictions_per_request):
+            if not all_predictions:
+                raise ValueError(
+                    f"No successful predictions from ensemble for request index {req_idx}"
+                )
 
-        # Ensemble voting
-        if self.voting_strategy == "soft":
-            # Average probabilities
-            ensemble_probs = np.mean(all_predictions, axis=0)
-        elif self.voting_strategy == "hard":
-            # Majority vote
-            predictions = [np.argmax(pred) for pred in all_predictions]
-            ensemble_pred = np.bincount(predictions).argmax()
-            ensemble_probs = np.zeros(len(all_predictions[0]))
-            ensemble_probs[ensemble_pred] = 1.0
-        else:
-            raise ValueError(f"Unknown voting strategy: {self.voting_strategy}")
+            if strategy == "soft":
+                ensemble_probs = np.mean(all_predictions, axis=0)
+            elif strategy == "hard":
+                predictions = [np.argmax(pred) for pred in all_predictions]
+                ensemble_pred = np.bincount(predictions).argmax()
+                ensemble_probs = np.zeros(len(all_predictions[0]))
+                ensemble_probs[ensemble_pred] = 1.0
+            else:
+                raise ValueError(f"Unknown voting strategy: {strategy}")
 
-        # Convert to class probabilities dictionary
-        class_names = [
-            "No DR",
-            "Mild DR",
-            "Moderate DR",
-            "Severe DR",
-            "Proliferative DR",
-        ]
-        result = {class_names[i]: float(prob) for i, prob in enumerate(ensemble_probs)}
+            class_names = [
+                "No DR",
+                "Mild DR",
+                "Moderate DR",
+                "Severe DR",
+                "Proliferative DR",
+            ]
+            result = {
+                class_names[i]: float(prob) for i, prob in enumerate(ensemble_probs)
+            }
+            result["predicted_class"] = class_names[np.argmax(ensemble_probs)]
+            result["confidence"] = float(np.max(ensemble_probs))
+            result["ensemble_size"] = len(all_predictions)
+            result["voting_strategy"] = strategy
+            results.append(result)
 
-        # Add prediction metadata
-        result["predicted_class"] = class_names[np.argmax(ensemble_probs)]
-        result["confidence"] = float(np.max(ensemble_probs))
-        result["ensemble_size"] = len(all_predictions)
-        result["voting_strategy"] = self.voting_strategy
-
-        return result
+        return results
 
     def _prepare_input(self, image: np.ndarray, config: Dict) -> torch.Tensor:
-        """Prepare input tensor for model."""
+        """Prepare input tensor for model (single image, CHW)."""
         # Image should already be preprocessed, just need to convert to tensor
         # target_size = config.get("input_size", (500, 500))
 
@@ -247,8 +281,15 @@ class ModelEnsemble:
             ]
         )
 
-        tensor = transform(image).unsqueeze(0).to(self.device)
+        tensor = transform(image)
         return tensor
+
+    def _prepare_batch_input(
+        self, images: List[np.ndarray], config: Dict
+    ) -> torch.Tensor:
+        """Prepare batched input tensor for model (BCHW)."""
+        tensors = [self._prepare_input(image, config) for image in images]
+        return torch.stack(tensors, dim=0).to(self.device)
 
 
 class DiabeticRetinopathyClassifier:
@@ -317,18 +358,27 @@ class DiabeticRetinopathyClassifier:
 
         return ModelEnsemble(models_config, self.device, voting_strategy)
 
-    def classify(self, preprocessed_images: Dict[str, np.ndarray]) -> Dict:
+    def classify(
+        self,
+        preprocessed_images: Dict[str, np.ndarray],
+        voting_strategy: Optional[str] = None,
+    ) -> Dict:
         """
         Classify diabetic retinopathy from preprocessed images.
 
         Args:
             preprocessed_images: Dictionary of preprocessed image variants
+            voting_strategy: Optional voting strategy override
 
         Returns:
             Classification results with probabilities and metadata
         """
         try:
-            results = self.ensemble.predict(preprocessed_images)
+            results = self.ensemble.predict(
+                preprocessed_images, voting_strategy=voting_strategy
+            )
+
+            strategy = voting_strategy or self.ensemble.voting_strategy
 
             # Add additional metadata
             results["model_info"] = {
@@ -344,13 +394,62 @@ class DiabeticRetinopathyClassifier:
                         ]
                     )
                 ),
-                "voting_strategy": self.ensemble.voting_strategy,
+                "voting_strategy": strategy,
             }
 
             return results
 
         except Exception as e:
             self.logger.error(f"Classification failed: {e}")
+            raise
+
+    def classify_batch(
+        self,
+        preprocessed_images_batch: List[Dict[str, np.ndarray]],
+        voting_strategy: Optional[str] = None,
+    ) -> List[Dict]:
+        """
+        Classify diabetic retinopathy for multiple requests in one model pass.
+
+        Args:
+            preprocessed_images_batch: List of dictionaries of preprocessed variants
+            voting_strategy: Optional voting strategy override
+
+        Returns:
+            List of classification results with probabilities and metadata
+        """
+        try:
+            results_batch = self.ensemble.predict_batch(
+                preprocessed_images_batch, voting_strategy=voting_strategy
+            )
+
+            strategy = voting_strategy or self.ensemble.voting_strategy
+
+            model_info = {
+                "ensemble_size": len(self.ensemble.models),
+                "architectures": list(
+                    set([m["config"]["architecture"] for m in self.ensemble.models])
+                ),
+                "datasets": list(
+                    set(
+                        [
+                            m["config"].get("dataset", "unknown")
+                            for m in self.ensemble.models
+                        ]
+                    )
+                ),
+                "voting_strategy": strategy,
+            }
+
+            enriched_results = []
+            for result in results_batch:
+                result["model_info"] = model_info
+                enriched_results.append(result)
+
+            return enriched_results
+
+        except Exception as e:
+            self.logger.error(f"Batch classification failed: {e}")
             raise
 
     def get_model_info(self) -> Dict:

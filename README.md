@@ -537,6 +537,32 @@ The inference server provides several REST API endpoints:
 - `POST /classify` - Classify from preprocessed images
 - `POST /process` - Full pipeline (preprocess + classify)
 
+#### Dynamic Batching (Server-Side)
+
+The server supports dynamic micro-batching for inference to improve throughput under concurrent load.
+
+- Dynamic batching is transparent for clients and applies internally to `/classify` and the classification stage of `/process`.
+- Keep using single-image requests for `/process`; batching does not require a path parameter.
+- No batching flag is required in endpoint path.
+
+Configure batching in `configs/classifier_config.yaml`:
+
+```yaml
+dynamic_batching:
+  enabled: false
+  max_batch_size: 8
+  max_wait_ms: 15
+  max_queue_size: 256
+  request_timeout_s: 15
+```
+
+Recommended starting point for production tuning:
+
+- `max_batch_size`: 8
+- `max_wait_ms`: 10-20
+- `max_queue_size`: 256-1024
+- `request_timeout_s`: 10-20
+
 #### Voting Strategy Query Parameter
 
 The classification endpoints (`/classify` and `/process`) support dynamic voting strategy selection via query parameter:
@@ -609,6 +635,16 @@ response = requests.post(
 )
 # Returns 400 Bad Request:
 # {"error": "Invalid voting_strategy 'invalid'. Must be 'soft' or 'hard'"}
+
+# Dynamic batching queue is full
+response = requests.post('http://localhost:5000/process', files=files)
+# May return 429 Too Many Requests:
+# {"error": "Dynamic batch queue is full"}
+
+# Dynamic batching queue wait timed out
+response = requests.post('http://localhost:5000/process', files=files)
+# May return 503 Service Unavailable:
+# {"error": "Inference queue timeout", "timeout_seconds": 15}
 ```
 
 ## Advanced Configuration

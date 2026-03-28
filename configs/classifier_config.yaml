@@ -47,6 +47,13 @@ class_names:
 
 confidence_threshold: 0.5
 
+dynamic_batching:
+  enabled: false
+  max_batch_size: 8
+  max_wait_ms: 15
+  max_queue_size: 256
+  request_timeout_s: 15
+
 redis:
   enabled: true
   host: localhost

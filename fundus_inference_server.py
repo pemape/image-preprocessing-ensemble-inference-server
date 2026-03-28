@@ -10,6 +10,8 @@ import time
 import json
 import base64
 import logging
+import threading
+from collections import defaultdict
 from io import BytesIO
 from typing import Dict, List, Optional, Union
 import cv2
@@ -19,6 +21,7 @@ from pathlib import Path
 import argparse
 import uuid
 from datetime import datetime, timezone
+from concurrent.futures import Future, TimeoutError as FuturesTimeoutError
 
 # Import generated OpenAPI models
 from ensemble_inference.models.process_result import ProcessResult
@@ -39,6 +42,148 @@ from ensemble_inference.models.preprocess_response_metadata import (
 from fundus_preprocessor import FundusPreprocessor
 from diabetic_retinopathy_classifier import DiabeticRetinopathyClassifier
 from redis_cache_manager import RedisCacheManager
+
+
+class DynamicBatchInferenceManager:
+    """Queue-based dynamic batching manager for classifier inference."""
+
+    def __init__(
+        self,
+        classifier: DiabeticRetinopathyClassifier,
+        logger: logging.Logger,
+        enabled: bool = False,
+        max_batch_size: int = 8,
+        max_wait_ms: int = 15,
+        max_queue_size: int = 256,
+    ):
+        self.classifier = classifier
+        self.logger = logger
+        self.enabled = enabled
+        self.max_batch_size = max(1, int(max_batch_size))
+        self.max_wait_ms = max(1, int(max_wait_ms))
+        self.max_queue_size = max(1, int(max_queue_size))
+
+        self._lock = threading.Lock()
+        self._condition = threading.Condition(self._lock)
+        self._pending: List[Dict] = []
+        self._stop_event = threading.Event()
+        self._worker: Optional[threading.Thread] = None
+
+        if self.enabled:
+            self._worker = threading.Thread(
+                target=self._run_worker,
+                name="dynamic-batch-worker",
+                daemon=True,
+            )
+            self._worker.start()
+            self.logger.info(
+                "Dynamic batching enabled (max_batch_size=%s, max_wait_ms=%s, max_queue_size=%s)",
+                self.max_batch_size,
+                self.max_wait_ms,
+                self.max_queue_size,
+            )
+
+    def stop(self, timeout: float = 2.0) -> None:
+        """Stop batch worker gracefully."""
+        if not self.enabled:
+            return
+
+        self._stop_event.set()
+        with self._condition:
+            self._condition.notify_all()
+
+        if self._worker and self._worker.is_alive():
+            self._worker.join(timeout=timeout)
+
+    def submit(
+        self,
+        preprocessed_images: Dict[str, np.ndarray],
+        voting_strategy: str,
+        timeout_seconds: float = 15.0,
+    ) -> Dict:
+        """Submit one inference request to the dynamic batch queue."""
+        if not self.enabled:
+            return self.classifier.classify(
+                preprocessed_images, voting_strategy=voting_strategy
+            )
+
+        future: Future = Future()
+        item = {
+            "images": preprocessed_images,
+            "voting_strategy": voting_strategy,
+            "future": future,
+            "enqueued_at": time.monotonic(),
+        }
+
+        with self._condition:
+            if len(self._pending) >= self.max_queue_size:
+                raise RuntimeError("Dynamic batch queue is full")
+
+            self._pending.append(item)
+            self._condition.notify()
+
+        return future.result(timeout=timeout_seconds)
+
+    def _run_worker(self) -> None:
+        while not self._stop_event.is_set():
+            batch = self._collect_batch()
+            if not batch:
+                continue
+
+            self._execute_batch(batch)
+
+    def _collect_batch(self) -> List[Dict]:
+        with self._condition:
+            while not self._pending and not self._stop_event.is_set():
+                self._condition.wait(timeout=0.25)
+
+            if self._stop_event.is_set() and not self._pending:
+                return []
+
+            if not self._pending:
+                return []
+
+            batch = [self._pending.pop(0)]
+            deadline = batch[0]["enqueued_at"] + (self.max_wait_ms / 1000.0)
+
+            while len(batch) < self.max_batch_size:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+
+                if not self._pending:
+                    self._condition.wait(timeout=remaining)
+                    continue
+
+                batch.append(self._pending.pop(0))
+
+            return batch
+
+    def _execute_batch(self, batch: List[Dict]) -> None:
+        grouped: Dict[str, List[Dict]] = defaultdict(list)
+        for item in batch:
+            grouped[item["voting_strategy"]].append(item)
+
+        for voting_strategy, items in grouped.items():
+            try:
+                images_batch = [item["images"] for item in items]
+                results = self.classifier.classify_batch(
+                    images_batch,
+                    voting_strategy=voting_strategy,
+                )
+
+                for item, result in zip(items, results):
+                    if not item["future"].done():
+                        item["future"].set_result(result)
+            except Exception as e:
+                self.logger.error(
+                    "Dynamic batch inference failed (strategy=%s): %s",
+                    voting_strategy,
+                    e,
+                )
+                for item in items:
+                    if not item["future"].done():
+                        item["future"].set_exception(e)
 
 
 class FundusInferenceServer:
@@ -88,6 +233,9 @@ class FundusInferenceServer:
         # Initialize Redis cache (optional)
         self.cache = self._initialize_cache(redis_config or {})
 
+        # Initialize dynamic batch manager (optional)
+        self.dynamic_batcher = self._initialize_dynamic_batcher()
+
         # Setup Flask app
         self.app = self._create_flask_app()
 
@@ -120,6 +268,27 @@ class FundusInferenceServer:
             password=redis_config.get("password"),
             ttl=redis_config.get("ttl", 86400),
             key_prefix=redis_config.get("key_prefix", "fundus_inference"),
+        )
+
+    def _initialize_dynamic_batcher(self) -> DynamicBatchInferenceManager:
+        """Initialize dynamic batch manager from classifier config."""
+        if not self.classifier:
+            return DynamicBatchInferenceManager(
+                classifier=None,
+                logger=self.logger,
+                enabled=False,
+            )
+
+        batching_cfg = self.classifier.config.get("dynamic_batching", {})
+        enabled = bool(batching_cfg.get("enabled", False))
+
+        return DynamicBatchInferenceManager(
+            classifier=self.classifier,
+            logger=self.logger,
+            enabled=enabled,
+            max_batch_size=batching_cfg.get("max_batch_size", 8),
+            max_wait_ms=batching_cfg.get("max_wait_ms", 15),
+            max_queue_size=batching_cfg.get("max_queue_size", 256),
         )
 
     # ========== Response Schema Helpers ==========
@@ -444,6 +613,12 @@ class FundusInferenceServer:
                         if self.classifier
                         else None
                     ),
+                    "dynamic_batching": {
+                        "enabled": self.dynamic_batcher.enabled,
+                        "max_batch_size": self.dynamic_batcher.max_batch_size,
+                        "max_wait_ms": self.dynamic_batcher.max_wait_ms,
+                        "max_queue_size": self.dynamic_batcher.max_queue_size,
+                    },
                 },
             },
             "endpoints": {
@@ -485,6 +660,9 @@ class FundusInferenceServer:
                 "force_cpu": self.classifier.config.get("force_cpu"),
                 "confidence_threshold": self.classifier.config.get(
                     "confidence_threshold"
+                ),
+                "dynamic_batching": self.classifier.config.get(
+                    "dynamic_batching", {}
                 ),
             }
 
@@ -606,25 +784,45 @@ class FundusInferenceServer:
             if not preprocessed_images:
                 return jsonify({"error": "No valid preprocessed images provided"}), 400
 
-            # Temporarily set voting strategy if different from default
-            original_strategy = self.classifier.ensemble.voting_strategy
-            self.classifier.ensemble.voting_strategy = voting_strategy
+            # Classify (optionally through dynamic batching)
+            start_time = time.time()
+            queue_timeout = self.classifier.config.get("dynamic_batching", {}).get(
+                "request_timeout_s", 15
+            )
 
-            try:
-                # Classify
-                start_time = time.time()
-                results = self.classifier.classify(preprocessed_images)
-                classification_time = time.time() - start_time
+            if self.dynamic_batcher.enabled:
+                try:
+                    results = self.dynamic_batcher.submit(
+                        preprocessed_images,
+                        voting_strategy=voting_strategy,
+                        timeout_seconds=queue_timeout,
+                    )
+                except RuntimeError as e:
+                    return jsonify({"error": str(e)}), 429
+                except FuturesTimeoutError:
+                    return (
+                        jsonify(
+                            {
+                                "error": "Inference queue timeout",
+                                "timeout_seconds": queue_timeout,
+                            }
+                        ),
+                        503,
+                    )
+            else:
+                results = self.classifier.classify(
+                    preprocessed_images,
+                    voting_strategy=voting_strategy,
+                )
 
-                response = ClassifyResponse()
-                response.status = OperationStatus.SUCCESS
-                response.classification_time_seconds = round(classification_time, 4)
-                response.classification = self._build_classification_result(results)
+            classification_time = time.time() - start_time
 
-                return jsonify(response.to_dict())
-            finally:
-                # Restore original voting strategy
-                self.classifier.ensemble.voting_strategy = original_strategy
+            response = ClassifyResponse()
+            response.status = OperationStatus.SUCCESS
+            response.classification_time_seconds = round(classification_time, 4)
+            response.classification = self._build_classification_result(results)
+
+            return jsonify(response.to_dict())
 
         except Exception as e:
             self.logger.error(f"Classification error: {e}")
@@ -752,19 +950,37 @@ class FundusInferenceServer:
                         400,
                     )
 
-                # Temporarily set voting strategy if different from default
-                original_strategy = self.classifier.ensemble.voting_strategy
-                self.classifier.ensemble.voting_strategy = voting_strategy
+                classification_start = time.time()
+                queue_timeout = self.classifier.config.get(
+                    "dynamic_batching", {}
+                ).get("request_timeout_s", 15)
 
-                try:
-                    classification_start = time.time()
+                if self.dynamic_batcher.enabled:
+                    try:
+                        classification_results_from_classifier = self.dynamic_batcher.submit(
+                            preprocessed_image_variants,
+                            voting_strategy=voting_strategy,
+                            timeout_seconds=queue_timeout,
+                        )
+                    except RuntimeError as e:
+                        return jsonify({"error": str(e)}), 429
+                    except FuturesTimeoutError:
+                        return (
+                            jsonify(
+                                {
+                                    "error": "Inference queue timeout",
+                                    "timeout_seconds": queue_timeout,
+                                }
+                            ),
+                            503,
+                        )
+                else:
                     classification_results_from_classifier = self.classifier.classify(
-                        preprocessed_image_variants
+                        preprocessed_image_variants,
+                        voting_strategy=voting_strategy,
                     )
-                    classification_time = time.time() - classification_start
-                finally:
-                    # Restore original voting strategy
-                    self.classifier.ensemble.voting_strategy = original_strategy
+
+                classification_time = time.time() - classification_start
 
             # Check if user wants to include preprocessed images
             include_encoded_images = (
@@ -1059,7 +1275,10 @@ class FundusInferenceServer:
     def run(self):
         """Start the server."""
         self.logger.info(f"Starting Fundus Inference Server on {self.host}:{self.port}")
-        self.app.run(host=self.host, port=self.port, debug=self.debug)
+        try:
+            self.app.run(host=self.host, port=self.port, debug=self.debug)
+        finally:
+            self.dynamic_batcher.stop()
 
 
 def main():

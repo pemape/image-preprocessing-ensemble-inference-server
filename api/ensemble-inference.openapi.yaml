@@ -24,6 +24,7 @@ info:
 
     ### Performance & Scalability
     - **Redis caching**: Hash-based caching with model configuration awareness
+    - **Dynamic micro-batching**: Server-side request coalescing for inference with bounded queueing
     - **Cache statistics**: Hit/miss tracking and performance metrics
     - **Request tracking**: Unique IDs and UTC timestamps for all operations
 
@@ -43,6 +44,14 @@ info:
 
     - `voting_strategy`: Choose `soft` (default) or `hard` voting for ensemble classification
     - `include_encoded_images`: Set to `true` to include base64-encoded preprocessed images (not cached)
+
+    ## Dynamic Batching Behavior
+
+    Dynamic batching is fully server-side and transparent for single-image endpoints.
+    There is no path parameter to toggle batching.
+
+    - Queue saturation returns `429 Too Many Requests`
+    - Queue wait timeout returns `503 Service Unavailable`
 
   version: 1.0.0
   contact:
@@ -253,7 +262,11 @@ paths:
       tags:
         - Single processing
       summary: Classify from preprocessed images
-      description: Classify diabetic retinopathy from preprocessed image variants
+      description: |
+        Classify diabetic retinopathy from preprocessed image variants.
+
+        Dynamic batching is handled transparently on the server side.
+        Clients do not need to provide any batching-specific path parameter.
       operationId: classifyImage
       parameters:
         - $ref: "#/components/parameters/VotingStrategy"
@@ -297,6 +310,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Dynamic inference queue is full
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                queueFull:
+                  value:
+                    error: "Dynamic batch queue is full"
+        "503":
+          description: Dynamic inference queue wait timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                queueTimeout:
+                  value:
+                    error: "Inference queue timeout"
+                    timeout_seconds: 15
 
   /process:
     post:
@@ -310,6 +344,9 @@ paths:
 
         **Caching**: Results are cached with Redis based on image hash and model configuration.
         Cached responses return near-instant results with `cached=true` indicator.
+
+        **Dynamic batching**: Classification stage may be dynamically micro-batched server-side.
+        This behavior is transparent to clients.
       operationId: fullProcess
       parameters:
         - $ref: "#/components/parameters/VotingStrategy"
@@ -352,6 +389,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Dynamic inference queue is full
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                queueFull:
+                  value:
+                    error: "Dynamic batch queue is full"
+        "503":
+          description: Dynamic inference queue wait timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                queueTimeout:
+                  value:
+                    error: "Inference queue timeout"
+                    timeout_seconds: 15
 
 components:
   parameters:
@@ -508,6 +566,8 @@ components:
                   type: integer
                 voting_strategy:
                   $ref: "#/components/schemas/VotingStrategyEnum"
+                dynamic_batching:
+                  $ref: "#/components/schemas/DynamicBatchingConfig"
         endpoints:
           type: object
           additionalProperties:
@@ -543,6 +603,32 @@ components:
             confidence_threshold:
               type: number
               format: float
+            dynamic_batching:
+              $ref: "#/components/schemas/DynamicBatchingConfig"
+
+    DynamicBatchingConfig:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          example: false
+        max_batch_size:
+          type: integer
+          minimum: 1
+          example: 8
+        max_wait_ms:
+          type: integer
+          minimum: 1
+          example: 15
+        max_queue_size:
+          type: integer
+          minimum: 1
+          example: 256
+        request_timeout_s:
+          type: number
+          format: float
+          minimum: 0.1
+          example: 15
 
     ModelInfoResponse:
       type: object
