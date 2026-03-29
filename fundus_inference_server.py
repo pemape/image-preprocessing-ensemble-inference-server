@@ -34,9 +34,14 @@ from ensemble_inference.models.voting_strategy_enum import VotingStrategyEnum
 from ensemble_inference.models.preprocess_response import PreprocessResponse
 from ensemble_inference.models.classify_response import ClassifyResponse
 from ensemble_inference.models.preprocessed_images import PreprocessedImages
+from ensemble_inference.models.batch_processing_metrics import BatchProcessingMetrics
+from ensemble_inference.models.model_configuration import ModelConfiguration
 from ensemble_inference.models.preprocess_response_metadata import (
     PreprocessResponseMetadata,
 )
+from ensemble_inference.models.process_metadata import ProcessMetadata
+from ensemble_inference.models.process_response import ProcessResponse
+from ensemble_inference.models.version_info import VersionInfo
 
 # Import our modules
 from fundus_preprocessor import FundusPreprocessor
@@ -860,8 +865,13 @@ class FundusInferenceServer:
 
             response = ClassifyResponse()
             response.status = OperationStatus.SUCCESS
+            response.cached = False
             response.classification_time_seconds = round(classification_time, 4)
-            response.batch_processing_metrics = batch_metrics
+            response.batch_processing_metrics = (
+                BatchProcessingMetrics.from_dict(batch_metrics)
+                if batch_metrics
+                else None
+            )
             response.classification = self._build_classification_result(results)
 
             return jsonify(response.to_dict())
@@ -944,22 +954,40 @@ class FundusInferenceServer:
                         "batch_size": 0,
                     }
 
-                # Update timestamp to current time in metadata
-                if (
-                    "process_metadata" in cached_result
-                    and "timestamp_utc" in cached_result["process_metadata"]
-                ):
-                    cached_result["process_metadata"][
-                        "timestamp_utc"
-                    ] = self._get_utc_timestamp()
+                cached_metadata = cached_result.get("process_metadata", {})
+                cached_version_info = cached_metadata.get("version_info", {})
+                version_info = VersionInfo(
+                    api_version=cached_version_info.get(
+                        "api_version", self._get_api_version()
+                    ),
+                    model_version=cached_version_info.get(
+                        "model_version", self._get_model_version()
+                    ),
+                )
 
-                if (
-                    "process_metadata" in cached_result
-                    and "request_id" in cached_result["process_metadata"]
-                ):
-                    cached_result["process_metadata"][
-                        "request_id"
-                    ] = self._generate_request_id()
+                model_configuration = None
+                cached_model_cfg = cached_metadata.get("model_configuration")
+                if isinstance(cached_model_cfg, dict):
+                    model_configuration = ModelConfiguration(
+                        model_architecture=cached_model_cfg.get(
+                            "model_architecture", "EfficientNetB4"
+                        ),
+                        ensemble_size=cached_model_cfg.get("ensemble_size", 1),
+                        trained_datasets=cached_model_cfg.get(
+                            "trained_datasets", ["APTOS-2019-DR-Classification"]
+                        ),
+                        voting_strategy=cached_model_cfg.get(
+                            "voting_strategy", "Soft-Voting"
+                        ),
+                    )
+
+                process_metadata = ProcessMetadata(
+                    request_id=self._generate_request_id(),
+                    timestamp_utc=self._get_utc_timestamp(),
+                    version_info=version_info,
+                    model_configuration=model_configuration,
+                )
+                cached_result["process_metadata"] = process_metadata.to_dict()
 
                 # Mark as cached in result
                 if (
@@ -1098,7 +1126,11 @@ class FundusInferenceServer:
                     image_processing_times=image_processing_times,
                     classification=classification_result,
                 )
-                process_result.batch_processing_metrics = batch_metrics
+                process_result.batch_processing_metrics = (
+                    BatchProcessingMetrics.from_dict(batch_metrics)
+                    if batch_metrics
+                    else None
+                )
 
                 # Optionally include preprocessed images
                 if include_encoded_images:
@@ -1111,37 +1143,36 @@ class FundusInferenceServer:
                         preprocessed_images[variant_name] = encoded_image
                     process_result.preprocessed_images = preprocessed_images
 
-                # Build process_metadata
-                process_metadata = {
-                    "request_id": self._generate_request_id(),
-                    "timestamp_utc": self._get_utc_timestamp(),
-                    "version_info": {
-                        "api_version": self._get_api_version(),
-                        "model_version": self._get_model_version(),
-                    },
-                }
-
-                # Add model configuration
                 model_info = self.classifier.get_model_info()
                 architectures = model_info.get("architectures", [])
                 datasets = model_info.get("datasets", [])
 
-                process_metadata["model_configuration"] = {
-                    "model_architecture": (
+                model_configuration = ModelConfiguration(
+                    model_architecture=(
                         architectures[0] if architectures else "EfficientNetB4"
                     ),
-                    "ensemble_size": len(self.classifier.ensemble.models),
-                    "trained_datasets": (
+                    ensemble_size=len(self.classifier.ensemble.models),
+                    trained_datasets=(
                         datasets if datasets else ["APTOS-2019-DR-Classification"]
                     ),
-                    "voting_strategy": f"{voting_strategy.capitalize()}-Voting",
-                }
+                    voting_strategy=f"{voting_strategy.capitalize()}-Voting",
+                )
 
-                # Combine into final response
-                response = {
-                    "process_metadata": process_metadata,
-                    "process_result": process_result.to_dict(),
-                }
+                process_metadata = ProcessMetadata(
+                    request_id=self._generate_request_id(),
+                    timestamp_utc=self._get_utc_timestamp(),
+                    version_info=VersionInfo(
+                        api_version=self._get_api_version(),
+                        model_version=self._get_model_version(),
+                    ),
+                    model_configuration=model_configuration,
+                )
+
+                process_response = ProcessResponse(
+                    process_metadata=process_metadata,
+                    process_result=process_result,
+                )
+                response = process_response.to_dict()
 
                 # STORE IN CACHE: Save result for future requests with model configuration
                 # Don't cache if include_images=true (too large)
@@ -1195,26 +1226,21 @@ class FundusInferenceServer:
                         preprocessed_images[variant_name] = encoded_image
                     process_result.preprocessed_images = preprocessed_images
 
-                process_metadata = {
-                    "request_id": self._generate_request_id(),
-                    "timestamp_utc": self._get_utc_timestamp(),
-                    "version_info": {
-                        "api_version": self._get_api_version(),
-                        "model_version": self._get_model_version(),
-                    },
-                }
-
-                response = {
-                    "process_metadata": process_metadata,
-                    "process_result": process_result.to_dict(),
-                }
-
-                # Add warning to result dictionary after creation
-                response_dict = process_result.to_dict()
-                response_dict["warning"] = (
-                    "Classification module not available - preprocessing only"
+                process_metadata = ProcessMetadata(
+                    request_id=self._generate_request_id(),
+                    timestamp_utc=self._get_utc_timestamp(),
+                    version_info=VersionInfo(
+                        api_version=self._get_api_version(),
+                        model_version=self._get_model_version(),
+                    ),
+                    model_configuration=None,
                 )
-                response["process_result"] = response_dict
+
+                process_response = ProcessResponse(
+                    process_metadata=process_metadata,
+                    process_result=process_result,
+                )
+                response = process_response.to_dict()
 
             return jsonify(response)
 

@@ -475,16 +475,20 @@ components:
           type: integer
           description: Image index in batch (only present in batch processing)
           example: 0
+          nullable: true
         image_properties:
           $ref: "#/components/schemas/ImageProperties"
         image_processing_times:
           $ref: "#/components/schemas/ImageProcessingTimes"
         batch_processing_metrics:
           $ref: "#/components/schemas/BatchProcessingMetrics"
+          nullable: true
         classification:
           $ref: "#/components/schemas/ClassificationResult"
+          nullable: true
         preprocessed_images:
           $ref: "#/components/schemas/PreprocessedImages"
+          nullable: true
           description: Optional - included only if include_encoded_images=true
       required:
         - status
@@ -506,6 +510,7 @@ components:
           example: "2025-10-30T14:30:22.123Z"
         model_configuration:
           $ref: "#/components/schemas/ModelConfiguration"
+          nullable: true
         version_info:
           $ref: "#/components/schemas/VersionInfo"
       required:
@@ -668,6 +673,7 @@ components:
           $ref: "#/components/schemas/OperationStatus"
         preprocessed_images:
           $ref: "#/components/schemas/PreprocessedImages"
+          nullable: true
           description: Optional - Base64-encoded preprocessed image variants (only included if include_encoded_images=true)
         metadata:
           type: object
@@ -696,6 +702,7 @@ components:
           format: float
         batch_processing_metrics:
           $ref: "#/components/schemas/BatchProcessingMetrics"
+          nullable: true
         classification:
           $ref: "#/components/schemas/ClassificationResult"
 
@@ -881,6 +888,7 @@ components:
         batch_id:
           type: string
           example: BATCH-a1b2c3d4e5f6
+          nullable: true
           description: Unique identifier for the executed dynamic batch
         batch_wait_ms:
           type: number

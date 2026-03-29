@@ -562,6 +562,7 @@ components:
         image_index:
           description: Image index in batch (only present in batch processing)
           example: 0
+          nullable: true
           title: image_index
           type: integer
         image_properties:
@@ -1195,6 +1196,7 @@ components:
         batch_id:
           description: Unique identifier for the executed dynamic batch
           example: BATCH-a1b2c3d4e5f6
+          nullable: true
           title: batch_id
           type: string
         batch_wait_ms:
