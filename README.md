@@ -269,20 +269,20 @@ Fastest way to get started - see [Docker Deployment](#docker-deployment-recommen
 
 2. **Configure Azure Blob Storage access:**
 
-   Set your Azure Storage connection string as an environment variable:
-   *** Contact admin to get <YOUR_KEY> ***
+  Set your Azure Storage SAS token as an environment variable.
+  Ask your administrator for a SAS token with at least **read** and **list** permissions.
 
-   **Windows (PowerShell):**
-   ```powershell
-   $env:AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=mlflowartifact2;AccountKey=<YOUR_KEY>;EndpointSuffix=core.windows.net"
-   ```
+  **Windows (PowerShell):**
+  ```powershell
+  $env:AZURE_STORAGE_SAS_TOKEN='mysecret'
+  ```
 
-   **Linux/Mac:**
-   ```bash
-   export AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=mlflowartifact2;AccountKey=<YOUR_KEY>;EndpointSuffix=core.windows.net"
-   ```
+  **Linux/Mac (bash/zsh):**
+  ```bash
+  export AZURE_STORAGE_SAS_TOKEN='mysecret'
+  ```
 
-   Or add to your shell profile (`.bashrc`, `.zshrc`, etc.) for persistence.
+  For persistence, add the export command to your shell profile (`.bashrc`, `.zshrc`, etc.) or your PowerShell profile.
 
 3. **Pull models from Azure Blob Storage:**
    ```bash
@@ -505,6 +505,7 @@ Set these in your GitHub repository settings before releasing:
 1. **Repository Secrets and variables -> Actions -> Secrets**
   - `DOCKERHUB_USERNAME`: your Docker Hub username
   - `DOCKERHUB_TOKEN`: Docker Hub access token (use a token, not password)
+  - `AZURE_STORAGE_SAS_TOKEN`: SAS token for Azure Blob access (ask admin; minimum permissions: read + list)
 2. **Repository Secrets and variables -> Actions -> Variables**
   - `DOCKERHUB_REPOSITORY`: target repository path, for example `mydockeruser/fundus-inference`
 
@@ -520,6 +521,7 @@ Set these in your GitHub repository settings before releasing:
 1. Prefer immutable deployment tags (for example `v1.2.3`) instead of `latest`
 2. Protect the `main` branch and require PR reviews before tagging
 3. Rotate `DOCKERHUB_TOKEN` periodically
+4. Do not hardcode SAS tokens in files or Docker images; provide `AZURE_STORAGE_SAS_TOKEN` via GitHub Secrets and runtime environment variables
 
 #### API Endpoints
 

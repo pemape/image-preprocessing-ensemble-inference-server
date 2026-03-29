@@ -23,7 +23,8 @@
     },
     "containerEnv": {
         "PYTHONUNBUFFERED": "1",
-        "PIP_DISABLE_PIP_VERSION_CHECK": "1"
+        "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+        "AZURE_STORAGE_SAS_TOKEN": "${localEnv:AZURE_STORAGE_SAS_TOKEN}"
     },
     "customizations": {
         "vscode": {
@@ -34,7 +35,8 @@
                 "ms-python.flake8",
                 "ms-toolsai.jupyter",
                 "ms-azuretools.vscode-docker",
-                "github.vscode-github-actions"
+                "github.vscode-github-actions",
+                "ms-vscode.makefile-tools"
             ],
             "settings": {
                 "python.defaultInterpreterPath": "/usr/local/bin/python",
@@ -42,6 +44,7 @@
                 "python.testing.pytestArgs": [
                     "_Tests"
                 ],
+                "makefile.makefilePath": "Makefile",
                 "python.formatting.provider": "none",
                 "editor.formatOnSave": true,
                 "editor.defaultFormatter": "ms-python.black-formatter"

@@ -41,6 +41,7 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          AZURE_STORAGE_SAS_TOKEN: ${{ secrets.AZURE_STORAGE_SAS_TOKEN }}
         run: |
           set -euo pipefail
           if [ -z "${DOCKERHUB_USERNAME}" ]; then
@@ -54,6 +55,10 @@ jobs:
           if [ -z "${DOCKERHUB_REPOSITORY}" ]; then
             echo "Missing required repository variable: DOCKERHUB_REPOSITORY" >&2
             echo "Example value: mydockeruser/fundus-inference" >&2
+            exit 1
+          fi
+          if [ -z "${AZURE_STORAGE_SAS_TOKEN}" ]; then
+            echo "Missing required secret: AZURE_STORAGE_SAS_TOKEN" >&2
             exit 1
           fi
 
@@ -87,5 +92,7 @@ jobs:
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          secrets: |
+            AZURE_STORAGE_SAS_TOKEN=${{ secrets.AZURE_STORAGE_SAS_TOKEN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
