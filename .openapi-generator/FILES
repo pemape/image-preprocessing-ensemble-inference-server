@@ -9,6 +9,7 @@ ensemble_inference/controllers/single_processing_controller.py
 ensemble_inference/encoder.py
 ensemble_inference/models/__init__.py
 ensemble_inference/models/base_model.py
+ensemble_inference/models/batch_processing_metrics.py
 ensemble_inference/models/cache_clear_response.py
 ensemble_inference/models/cache_health_response.py
 ensemble_inference/models/cache_stats.py
@@ -21,6 +22,7 @@ ensemble_inference/models/clear_cache_request.py
 ensemble_inference/models/config_response.py
 ensemble_inference/models/config_response_classification.py
 ensemble_inference/models/config_response_preprocessing.py
+ensemble_inference/models/dynamic_batching_config.py
 ensemble_inference/models/error_response.py
 ensemble_inference/models/health_response.py
 ensemble_inference/models/health_response_modules.py
@@ -44,9 +46,6 @@ ensemble_inference/models/version_info.py
 ensemble_inference/models/voting_strategy_enum.py
 ensemble_inference/openapi/openapi.yaml
 ensemble_inference/test/__init__.py
-ensemble_inference/test/test_cache_management_controller.py
-ensemble_inference/test/test_health_info_controller.py
-ensemble_inference/test/test_single_processing_controller.py
 ensemble_inference/typing_utils.py
 ensemble_inference/util.py
 git_push.sh

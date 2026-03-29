@@ -332,6 +332,65 @@ dvc pull
 
 The server will load the latest models on next restart.
 
+### Regenerating OpenAPI-Generated Code
+
+This repository uses OpenAPI Generator to produce the Python Flask/Connexion interface layer from the API contract in `api/ensemble-inference.openapi.yaml`.
+The generator configuration lives in `scripts/generator-cfg.yaml`, and `make openapi-generate` runs the generator in Docker.
+
+#### When regeneration is necessary
+
+Regenerate the OpenAPI output when any of the following changes:
+
+- The API contract in `api/ensemble-inference.openapi.yaml`
+- Generator settings in `scripts/generator-cfg.yaml`
+- The OpenAPI Generator invocation in the `Makefile`
+- Generated API files were deleted, cleaned, or are out of sync after switching branches
+
+You usually do not need to regenerate anything when you only change internal business logic inside existing controller implementations and the API contract itself has not changed.
+
+#### Why regeneration is necessary
+
+Regeneration keeps the generated request/response models, route bindings, and interface stubs aligned with the OpenAPI specification.
+If the spec changes but generated files are not refreshed, the repository can drift into a state where:
+
+- Server handlers no longer match the documented request or response schema
+- Added or renamed endpoints are missing from generated routing code
+- Published API documentation and runtime behavior diverge
+- Type and validation mismatches surface later during testing or integration
+
+In this project, that matters because the `ensemble_inference` package is generated from the OpenAPI contract and acts as the contract-facing layer for the inference server.
+
+#### How to regenerate
+
+Prerequisite: Docker must be installed and running, because the Make targets invoke `openapitools/openapi-generator-cli` in a container.
+
+1. Validate the specification:
+
+  ```bash
+  make openapi-validate
+  ```
+
+2. Regenerate the Python Flask interface code:
+
+  ```bash
+  make openapi-generate
+  ```
+
+3. If you also changed the published API docs, regenerate them too:
+
+  ```bash
+  make openapi-generate-docs
+  make openapi-generate-markdown
+  ```
+
+4. Review the generated diff and run tests before committing.
+
+  ```bash
+  python -m pytest _Tests/ -v
+  ```
+
+The generator currently uses the `python-flask` template with `packageName: ensemble_inference` and writes output into the repository root, so regeneration can update files under the generated API package directly.
+
 ## Usage
 
 ### Python Script Usage

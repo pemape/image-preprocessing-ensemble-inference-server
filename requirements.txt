@@ -1,52 +1,13 @@
-# Core Framework & Server
-Flask==3.0.0
-connexion[swagger-ui]>=2.14.2
-werkzeug>=3.0.0
-python-dateutil>=2.8.0
-setuptools>=80.0.0
-swagger-ui-bundle>=0.0.2
-
-# Deep Learning & Computer Vision
-torchinfo==1.8.0
-torchmetrics==1.2.1
-
-# Image Processing
-opencv-python-headless==4.8.1.78
-numpy==1.26.4
-Pillow==9.5.0
-scikit-image==0.22.0
-
-# Data Processing & Utilities
-PyYAML==6.0.1
-pydantic==2.12.5
-pydantic-settings==2.12.0
-tqdm==4.66.1
-joblib==1.3.2
-
-# Data Analysis & Visualization
-pandas==2.1.4
-matplotlib==3.8.2
-seaborn==0.13.0
-scikit-learn==1.1.3
-
-# Azure Integration
-dvc[azure]>=3.0.0
-azure-storage-blob==12.27.1
-azure-identity==1.25.1
-azure-ai-projects==1.0.0
-
-# Caching
-redis==7.0.1
-
-# API & Web
-fastapi>=0.116.0
-uvicorn>=0.35.0
-httpx>=0.26.0
-requests>=2.32.0
-
-# Code Quality & Testing
-pytest>=5.2.1
-pytest-cov>=2.10.0
-
-# Additional ML Libraries
-pretrainedmodels==0.7.4
+connexion[swagger-ui] >= 2.6.0; python_version>="3.6"
+# 2.3 is the last version that supports python 3.4-3.5
+connexion[swagger-ui] <= 2.3.0; python_version=="3.5" or python_version=="3.4"
+# prevent breaking dependencies from advent of connexion>=3.0
+connexion[swagger-ui] <= 2.14.2; python_version>"3.4"
+# connexion requires werkzeug but connexion < 2.4.0 does not install werkzeug
+# we must peg werkzeug versions below to fix connexion
+# https://github.com/zalando/connexion/pull/1044
+werkzeug == 0.16.1; python_version=="3.5" or python_version=="3.4"
+swagger-ui-bundle >= 0.0.2
+python_dateutil >= 2.6.0
+setuptools >= 21.0.0
+Flask == 2.1.1

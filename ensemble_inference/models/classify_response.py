@@ -3,10 +3,12 @@ from datetime import date, datetime  # noqa: F401
 from typing import List, Dict  # noqa: F401
 
 from ensemble_inference.models.base_model import Model
+from ensemble_inference.models.batch_processing_metrics import BatchProcessingMetrics
 from ensemble_inference.models.classification_result import ClassificationResult
 from ensemble_inference.models.operation_status import OperationStatus
 from ensemble_inference import util
 
+from ensemble_inference.models.batch_processing_metrics import BatchProcessingMetrics  # noqa: E501
 from ensemble_inference.models.classification_result import ClassificationResult  # noqa: E501
 from ensemble_inference.models.operation_status import OperationStatus  # noqa: E501
 
@@ -16,7 +18,7 @@ class ClassifyResponse(Model):
     Do not edit the class manually.
     """
 
-    def __init__(self, status=None, cached=None, classification_time_seconds=None, classification=None):  # noqa: E501
+    def __init__(self, status=None, cached=None, classification_time_seconds=None, batch_processing_metrics=None, classification=None):  # noqa: E501
         """ClassifyResponse - a model defined in OpenAPI
 
         :param status: The status of this ClassifyResponse.  # noqa: E501
@@ -25,6 +27,8 @@ class ClassifyResponse(Model):
         :type cached: bool
         :param classification_time_seconds: The classification_time_seconds of this ClassifyResponse.  # noqa: E501
         :type classification_time_seconds: float
+        :param batch_processing_metrics: The batch_processing_metrics of this ClassifyResponse.  # noqa: E501
+        :type batch_processing_metrics: BatchProcessingMetrics
         :param classification: The classification of this ClassifyResponse.  # noqa: E501
         :type classification: ClassificationResult
         """
@@ -32,6 +36,7 @@ class ClassifyResponse(Model):
             'status': OperationStatus,
             'cached': bool,
             'classification_time_seconds': float,
+            'batch_processing_metrics': BatchProcessingMetrics,
             'classification': ClassificationResult
         }
 
@@ -39,12 +44,14 @@ class ClassifyResponse(Model):
             'status': 'status',
             'cached': 'cached',
             'classification_time_seconds': 'classification_time_seconds',
+            'batch_processing_metrics': 'batch_processing_metrics',
             'classification': 'classification'
         }
 
         self._status = status
         self._cached = cached
         self._classification_time_seconds = classification_time_seconds
+        self._batch_processing_metrics = batch_processing_metrics
         self._classification = classification
 
     @classmethod
@@ -122,6 +129,27 @@ class ClassifyResponse(Model):
         """
 
         self._classification_time_seconds = classification_time_seconds
+
+    @property
+    def batch_processing_metrics(self) -> BatchProcessingMetrics:
+        """Gets the batch_processing_metrics of this ClassifyResponse.
+
+
+        :return: The batch_processing_metrics of this ClassifyResponse.
+        :rtype: BatchProcessingMetrics
+        """
+        return self._batch_processing_metrics
+
+    @batch_processing_metrics.setter
+    def batch_processing_metrics(self, batch_processing_metrics: BatchProcessingMetrics):
+        """Sets the batch_processing_metrics of this ClassifyResponse.
+
+
+        :param batch_processing_metrics: The batch_processing_metrics of this ClassifyResponse.
+        :type batch_processing_metrics: BatchProcessingMetrics
+        """
+
+        self._batch_processing_metrics = batch_processing_metrics
 
     @property
     def classification(self) -> ClassificationResult:

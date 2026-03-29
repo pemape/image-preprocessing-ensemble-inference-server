@@ -1,5 +1,6 @@
 # flake8: noqa
 # import models into model package
+from ensemble_inference.models.batch_processing_metrics import BatchProcessingMetrics
 from ensemble_inference.models.cache_clear_response import CacheClearResponse
 from ensemble_inference.models.cache_health_response import CacheHealthResponse
 from ensemble_inference.models.cache_stats import CacheStats
@@ -12,6 +13,7 @@ from ensemble_inference.models.clear_cache_request import ClearCacheRequest
 from ensemble_inference.models.config_response import ConfigResponse
 from ensemble_inference.models.config_response_classification import ConfigResponseClassification
 from ensemble_inference.models.config_response_preprocessing import ConfigResponsePreprocessing
+from ensemble_inference.models.dynamic_batching_config import DynamicBatchingConfig
 from ensemble_inference.models.error_response import ErrorResponse
 from ensemble_inference.models.health_response import HealthResponse
 from ensemble_inference.models.health_response_modules import HealthResponseModules

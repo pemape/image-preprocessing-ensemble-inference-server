@@ -5,7 +5,6 @@
 # Configuration
 PYTHON = python
 PIP = pip
-CONFIG_FILE = preprocessing_config.yaml
 SERVER_HOST = 0.0.0.0
 SERVER_PORT = 8080
 TEST_IMAGE = test_image.jpg
@@ -23,6 +22,7 @@ DOCKER_COMPOSE_FILE = build/docker/docker-compose.yml
 
 # Preprocessing specific variables
 PREPROCESS_CONFIG = configs\preprocessing_config.yaml
+CLASSIFIER_CONFIG = configs\classifier_config.yaml
 PREPROCESS_INPUT = "./test-images/007-2809-100.jpg"
 PREPROCESS_OUTPUT = final_resized_processed_images  # Changed to match config default
 
@@ -62,7 +62,6 @@ help: ## Show this help message
 	@echo "  test-config  - Test configuration validity"
 	@echo "  openapi-validate - Validate OpenAPI specification"
 	@echo "  openapi-generate - Generate client SDK from OpenAPI spec"
-	@echo "  openapi-generate-python - Generate Python client SDK"
 	@echo "  openapi-generate-docs - Generate HTML documentation"
 	@echo "  openapi-generate-all - Generate all SDKs and documentation"
 	@echo "  compose-up       - Start services using Docker Compose (RECOMMENDED)"
@@ -102,7 +101,7 @@ setup: install ## Setup the project
 # Testing and Validation
 test-config: ## Test configuration file validity
 	@echo "Testing configuration file..."
-	$(PYTHON) -c "import yaml; yaml.safe_load(open('$(CONFIG_FILE)', 'r')); print('Config file is valid')"
+	$(PYTHON) -c "import yaml; yaml.safe_load(open('$(PREPROCESS_CONFIG)', 'r')); print('Config file is valid')"
 	@echo "Configuration file is valid!"
 
 check: format lint test-config ## Run all checks
@@ -111,15 +110,15 @@ check: format lint test-config ## Run all checks
 # Server Operations
 server: ## Start the inference server
 	@echo "Starting inference server on $(SERVER_HOST):$(SERVER_PORT)..."
-	$(PYTHON) fundus_inference_server.py --config $(CONFIG_FILE) --host $(SERVER_HOST) --port $(SERVER_PORT) --log-level $(LOG_LEVEL)
+	$(PYTHON) fundus_inference_server.py --preprocessing-config $(PREPROCESS_CONFIG) --classifier-config $(CLASSIFIER_CONFIG) --host $(SERVER_HOST) --port $(SERVER_PORT) --log-level $(LOG_LEVEL)
 
 server-debug: ## Start server in debug mode
 	@echo "Starting inference server in debug mode..."
-	$(PYTHON) fundus_inference_server.py --config $(CONFIG_FILE) --host $(SERVER_HOST) --port $(SERVER_PORT) --debug --log-level DEBUG
+	$(PYTHON) fundus_inference_server.py --preprocessing-config $(PREPROCESS_CONFIG) --classifier-config $(CLASSIFIER_CONFIG) --host $(SERVER_HOST) --port $(SERVER_PORT) --debug --log-level DEBUG
 
 server-redis: ## Start server with Redis caching enabled
 	@echo "Starting inference server with Redis caching..."
-	$(PYTHON) fundus_inference_server.py --preprocessing-config configs\preprocessing_config.yaml --classifier-config configs\classifier_config.yaml --host $(SERVER_HOST) --port $(SERVER_PORT) --redis-enabled true
+	$(PYTHON) fundus_inference_server.py --preprocessing-config $(PREPROCESS_CONFIG) --classifier-config $(CLASSIFIER_CONFIG) --host $(SERVER_HOST) --port $(SERVER_PORT) --redis-enabled true
 
 # Redis Cache Operations
 redis-start: ## Start Redis server in Docker
@@ -215,7 +214,7 @@ docs: ## Generate documentation
 # Benchmarking
 benchmark: ## Run performance benchmarks
 	@echo "Running performance benchmarks..."
-	$(PYTHON) -c "import time; import numpy as np; from fundus_preprocessor import FundusPreprocessor; test_image = np.random.randint(0, 255, (1000, 1000, 3), dtype=np.uint8); preprocessor = FundusPreprocessor('$(CONFIG_FILE)'); start_time = time.time(); result = preprocessor.process_image(test_image, 'benchmark'); end_time = time.time(); print(f'Processing time: {end_time - start_time:.3f} seconds'); print(f'Variants: {len(result)}')"
+	$(PYTHON) -c "import time; import numpy as np; from fundus_preprocessor import FundusPreprocessor; test_image = np.random.randint(0, 255, (1000, 1000, 3), dtype=np.uint8); preprocessor = FundusPreprocessor('$(PREPROCESS_CONFIG)'); start_time = time.time(); result = preprocessor.process_image(test_image, 'benchmark'); end_time = time.time(); print(f'Processing time: {end_time - start_time:.3f} seconds'); print(f'Variants: {len(result)}')"
 
 # OpenAPI Generator Operations
 openapi-validate: ## Validate OpenAPI specification
@@ -329,16 +328,18 @@ openapi-generate-markdown: ## Generate Markdown documentation from OpenAPI spec
 		-o /local/$(API_OUTPUT_DIR)/markdown
 	@echo "Markdown documentation generated in $(API_OUTPUT_DIR)/markdown"
 
-openapi-generate-all: openapi-validate openapi-generate-python openapi-generate-typescript openapi-generate-docs ## Generate all SDKs and documentation
+openapi-generate-all: openapi-validate openapi-generate openapi-generate-markdown openapi-generate-docs ## Generate all SDKs and documentation
 	@echo "All client SDKs and documentation generated successfully!"
 
 openapi-list-generators: ## List all available OpenAPI generators
 	@echo "Available OpenAPI generators:"
 	docker run --rm $(OPENAPI_GENERATOR_IMAGE) list
 
-openapi-clean: ## Clean generated API artifacts
+openapi-clean: ## Clean generated API artifacts (docs, markdown; preserves source spec)
 	@echo "Cleaning generated API artifacts..."
-	@if exist "$(API_OUTPUT_DIR)" rmdir /s /q "$(API_OUTPUT_DIR)"
+	@if exist "$(API_OUTPUT_DIR)\docs" rmdir /s /q "$(API_OUTPUT_DIR)\docs"
+	@if exist "$(API_OUTPUT_DIR)\markdown" rmdir /s /q "$(API_OUTPUT_DIR)\markdown"
+	@if exist "ensemble_inference" rmdir /s /q "ensemble_inference"
 	@echo "Generated API artifacts cleaned!"
 
 # Cleanup
@@ -394,7 +395,7 @@ version: ## Show version information
 info: version ## Show system information
 	@echo ""
 	@echo "Configuration:"
-	@echo "  Config file: $(CONFIG_FILE)"
+	@echo "  Config file: $(PREPROCESS_CONFIG)"
 	@echo "  Server: $(SERVER_HOST):$(SERVER_PORT)"
 	@echo "  Output dir: $(OUTPUT_DIR)"
 	@echo "  Log level: $(LOG_LEVEL)"

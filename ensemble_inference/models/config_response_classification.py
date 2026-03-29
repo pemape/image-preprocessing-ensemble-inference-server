@@ -3,9 +3,11 @@ from datetime import date, datetime  # noqa: F401
 from typing import List, Dict  # noqa: F401
 
 from ensemble_inference.models.base_model import Model
+from ensemble_inference.models.dynamic_batching_config import DynamicBatchingConfig
 from ensemble_inference.models.voting_strategy_enum import VotingStrategyEnum
 from ensemble_inference import util
 
+from ensemble_inference.models.dynamic_batching_config import DynamicBatchingConfig  # noqa: E501
 from ensemble_inference.models.voting_strategy_enum import VotingStrategyEnum  # noqa: E501
 
 class ConfigResponseClassification(Model):
@@ -14,7 +16,7 @@ class ConfigResponseClassification(Model):
     Do not edit the class manually.
     """
 
-    def __init__(self, voting_strategy=VotingStrategyEnum.SOFT, force_cpu=None, confidence_threshold=None):  # noqa: E501
+    def __init__(self, voting_strategy=VotingStrategyEnum.SOFT, force_cpu=None, confidence_threshold=None, dynamic_batching=None):  # noqa: E501
         """ConfigResponseClassification - a model defined in OpenAPI
 
         :param voting_strategy: The voting_strategy of this ConfigResponseClassification.  # noqa: E501
@@ -23,22 +25,27 @@ class ConfigResponseClassification(Model):
         :type force_cpu: bool
         :param confidence_threshold: The confidence_threshold of this ConfigResponseClassification.  # noqa: E501
         :type confidence_threshold: float
+        :param dynamic_batching: The dynamic_batching of this ConfigResponseClassification.  # noqa: E501
+        :type dynamic_batching: DynamicBatchingConfig
         """
         self.openapi_types = {
             'voting_strategy': VotingStrategyEnum,
             'force_cpu': bool,
-            'confidence_threshold': float
+            'confidence_threshold': float,
+            'dynamic_batching': DynamicBatchingConfig
         }
 
         self.attribute_map = {
             'voting_strategy': 'voting_strategy',
             'force_cpu': 'force_cpu',
-            'confidence_threshold': 'confidence_threshold'
+            'confidence_threshold': 'confidence_threshold',
+            'dynamic_batching': 'dynamic_batching'
         }
 
         self._voting_strategy = voting_strategy
         self._force_cpu = force_cpu
         self._confidence_threshold = confidence_threshold
+        self._dynamic_batching = dynamic_batching
 
     @classmethod
     def from_dict(cls, dikt) -> 'ConfigResponseClassification':
@@ -113,3 +120,24 @@ class ConfigResponseClassification(Model):
         """
 
         self._confidence_threshold = confidence_threshold
+
+    @property
+    def dynamic_batching(self) -> DynamicBatchingConfig:
+        """Gets the dynamic_batching of this ConfigResponseClassification.
+
+
+        :return: The dynamic_batching of this ConfigResponseClassification.
+        :rtype: DynamicBatchingConfig
+        """
+        return self._dynamic_batching
+
+    @dynamic_batching.setter
+    def dynamic_batching(self, dynamic_batching: DynamicBatchingConfig):
+        """Sets the dynamic_batching of this ConfigResponseClassification.
+
+
+        :param dynamic_batching: The dynamic_batching of this ConfigResponseClassification.
+        :type dynamic_batching: DynamicBatchingConfig
+        """
+
+        self._dynamic_batching = dynamic_batching

@@ -844,6 +844,40 @@ ul.nav-tabs {
   <script>
     // Script section to load models into a JS Var
     var defs = {}
+    defs["BatchProcessingMetrics"] = {
+  "type" : "object",
+  "properties" : {
+    "batch_id" : {
+      "type" : "string",
+      "description" : "Unique identifier for the executed dynamic batch",
+      "example" : "BATCH-a1b2c3d4e5f6"
+    },
+    "batch_wait_ms" : {
+      "type" : "number",
+      "description" : "Time spent waiting in the dynamic batch queue before inference starts",
+      "format" : "float",
+      "example" : 15.0
+    },
+    "batch_execution_ms" : {
+      "type" : "number",
+      "description" : "Time spent executing the grouped batch on the model",
+      "format" : "float",
+      "example" : 892.3
+    },
+    "batch_total_ms" : {
+      "type" : "number",
+      "description" : "Total time from queue enqueue to batch result availability",
+      "format" : "float",
+      "example" : 907.3
+    },
+    "batch_size" : {
+      "type" : "integer",
+      "description" : "Number of requests grouped into the executed batch",
+      "example" : 4
+    }
+  },
+  "description" : "Dynamic batch queue and execution timing metrics"
+};
     defs["CacheClearResponse"] = {
   "type" : "object",
   "properties" : {
@@ -1028,6 +1062,9 @@ ul.nav-tabs {
       "type" : "number",
       "format" : "float"
     },
+    "batch_processing_metrics" : {
+      "$ref" : "#/components/schemas/BatchProcessingMetrics"
+    },
     "classification" : {
       "$ref" : "#/components/schemas/ClassificationResult"
     }
@@ -1066,6 +1103,9 @@ ul.nav-tabs {
     "confidence_threshold" : {
       "type" : "number",
       "format" : "float"
+    },
+    "dynamic_batching" : {
+      "$ref" : "#/components/schemas/DynamicBatchingConfig"
     }
   }
 };
@@ -1087,6 +1127,36 @@ ul.nav-tabs {
     },
     "parallel_processing" : {
       "type" : "boolean"
+    }
+  }
+};
+    defs["DynamicBatchingConfig"] = {
+  "type" : "object",
+  "properties" : {
+    "enabled" : {
+      "type" : "boolean",
+      "example" : false
+    },
+    "max_batch_size" : {
+      "minimum" : 1,
+      "type" : "integer",
+      "example" : 8
+    },
+    "max_wait_ms" : {
+      "minimum" : 1,
+      "type" : "integer",
+      "example" : 15
+    },
+    "max_queue_size" : {
+      "minimum" : 1,
+      "type" : "integer",
+      "example" : 256
+    },
+    "request_timeout_s" : {
+      "minimum" : 0.1,
+      "type" : "number",
+      "format" : "float",
+      "example" : 15
     }
   }
 };
@@ -1230,6 +1300,9 @@ ul.nav-tabs {
     },
     "voting_strategy" : {
       "$ref" : "#/components/schemas/VotingStrategyEnum"
+    },
+    "dynamic_batching" : {
+      "$ref" : "#/components/schemas/DynamicBatchingConfig"
     }
   }
 };
@@ -1447,6 +1520,9 @@ ul.nav-tabs {
     "image_processing_times" : {
       "$ref" : "#/components/schemas/ImageProcessingTimes"
     },
+    "batch_processing_metrics" : {
+      "$ref" : "#/components/schemas/BatchProcessingMetrics"
+    },
     "classification" : {
       "$ref" : "#/components/schemas/ClassificationResult"
     },
@@ -1567,6 +1643,7 @@ ul.nav-tabs {
 <h3>Performance &amp; Scalability</h3>
 <ul>
 <li><strong>Redis caching</strong>: Hash-based caching with model configuration awareness</li>
+<li><strong>Dynamic micro-batching</strong>: Server-side request coalescing for inference with bounded queueing</li>
 <li><strong>Cache statistics</strong>: Hit/miss tracking and performance metrics</li>
 <li><strong>Request tracking</strong>: Unique IDs and UTC timestamps for all operations</li>
 </ul>
@@ -1587,6 +1664,13 @@ ul.nav-tabs {
 <ul>
 <li><code>voting_strategy</code>: Choose <code>soft</code> (default) or <code>hard</code> voting for ensemble classification</li>
 <li><code>include_encoded_images</code>: Set to <code>true</code> to include base64-encoded preprocessed images (not cached)</li>
+</ul>
+<h2>Dynamic Batching Behavior</h2>
+<p>Dynamic batching is fully server-side and transparent for single-image endpoints.
+There is no path parameter to toggle batching.</p>
+<ul>
+<li>Queue saturation returns <code>429 Too Many Requests</code></li>
+<li>Queue wait timeout returns <code>503 Service Unavailable</code></li>
 </ul>
 
             </div>
@@ -4130,7 +4214,11 @@ pub fn main() {
                         <div class="pull-right"></div>
                         <div class="clearfix"></div>
                         <p></p>
-                        <p class="marked">Classify diabetic retinopathy from preprocessed image variants</p>
+                        <p class="marked">Classify diabetic retinopathy from preprocessed image variants.
+
+Dynamic batching is handled transparently on the server side.
+Clients do not need to provide any batching-specific path parameter.
+</p>
                         <p></p>
                         <br />
                         <pre class="prettyprint language-html prettyprinted" data-type="post"><code><span class="pln">/classify</span></code></pre>
@@ -4725,6 +4813,179 @@ Ensemble voting strategy for classification
                                 <input id='responses-SingleProcessing-classifyImage-500-schema-data' type='hidden' value=''></input>
                               </div>
                             </div>
+                            <h3 id="examples-SingleProcessing-classifyImage-title-429"></h3>
+                            <p id="examples-SingleProcessing-classifyImage-description-429" class="marked"></p>
+                            <script>
+                              var responseSingleProcessing429_description = `Dynamic inference queue is full`;
+                              var responseSingleProcessing429_description_break = responseSingleProcessing429_description.indexOf('\n');
+                              if (responseSingleProcessing429_description_break == -1) {
+                                $("#examples-SingleProcessing-classifyImage-title-429").text("Status: 429 - " + responseSingleProcessing429_description);
+                              } else {
+                                $("#examples-SingleProcessing-classifyImage-title-429").text("Status: 429 - " + responseSingleProcessing429_description.substring(0, responseSingleProcessing429_description_break));
+                                $("#examples-SingleProcessing-classifyImage-description-429").html(responseSingleProcessing429_description.substring(responseSingleProcessing429_description_break));
+                              }
+                            </script>
+
+
+                            <ul id="responses-detail-SingleProcessing-classifyImage-429" class="nav nav-tabs nav-tabs-examples" >
+                                <li class="active">
+                                  <a data-toggle="tab" href="#responses-SingleProcessing-classifyImage-429-schema">Schema</a>
+                                </li>
+
+
+
+
+                            </ul>
+
+
+                            <div class="tab-content" id="responses-SingleProcessing-classifyImage-429-wrapper" style='margin-bottom: 10px;'>
+                              <div class="tab-pane active" id="responses-SingleProcessing-classifyImage-429-schema">
+                                <div id="responses-SingleProcessing-classifyImage-schema-429" class="exampleStyle">
+                                  <script>
+                                    $(document).ready(function() {
+                                      var schemaWrapper = {
+  "description" : "Dynamic inference queue is full",
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "$ref" : "#/components/schemas/ErrorResponse"
+      },
+      "examples" : {
+        "queueFull" : {
+          "value" : {
+            "error" : "Dynamic batch queue is full"
+          }
+        }
+      }
+    }
+  }
+};
+                                      var schema = findNode('schema',schemaWrapper).schema;
+                                      if (!schema) {
+                                        schema = schemaWrapper.schema;
+                                      }
+                                      if (schema == null) {
+                                        return;
+                                      }
+                                      if (schema.$ref != null) {
+                                        schema = defsParser.$refs.get(schema.$ref);
+                                        if (schema.properties != null) {
+                                          Object.keys(schema.properties).forEach( (item) => {
+                                            if (schema.properties[item].$ref != null) {
+                                              schema.properties[item] = defsParser.$refs.get(schema.properties[item].$ref);
+                                            }
+                                          });
+                                        }
+                                      } else if (schema.items != null && schema.items.$ref != null) {
+                                        schema.items = defsParser.$refs.get(schema.items.$ref);
+                                      } else {
+                                        schemaWrapper.definitions = Object.assign({}, defs);
+                                        $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                          console.log(err);
+                                        });
+                                      }
+
+                                      var view = new JSONSchemaView(schema, 3);
+                                      $('#responses-SingleProcessing-classifyImage-429-schema-data').val(JSON.stringify(schema));
+                                      var result = $('#responses-SingleProcessing-classifyImage-schema-429');
+                                      result.empty();
+                                      result.append(view.render());
+                                    });
+                                  </script>
+                                </div>
+                                <input id='responses-SingleProcessing-classifyImage-429-schema-data' type='hidden' value=''></input>
+                              </div>
+                                <div class="tab-pane" id="examples-SingleProcessing-classifyImage-429-example">
+                                  <pre class="prettyprint"><code class="json"></code></pre>
+                                </div>
+                            </div>
+                            <h3 id="examples-SingleProcessing-classifyImage-title-503"></h3>
+                            <p id="examples-SingleProcessing-classifyImage-description-503" class="marked"></p>
+                            <script>
+                              var responseSingleProcessing503_description = `Dynamic inference queue wait timeout`;
+                              var responseSingleProcessing503_description_break = responseSingleProcessing503_description.indexOf('\n');
+                              if (responseSingleProcessing503_description_break == -1) {
+                                $("#examples-SingleProcessing-classifyImage-title-503").text("Status: 503 - " + responseSingleProcessing503_description);
+                              } else {
+                                $("#examples-SingleProcessing-classifyImage-title-503").text("Status: 503 - " + responseSingleProcessing503_description.substring(0, responseSingleProcessing503_description_break));
+                                $("#examples-SingleProcessing-classifyImage-description-503").html(responseSingleProcessing503_description.substring(responseSingleProcessing503_description_break));
+                              }
+                            </script>
+
+
+                            <ul id="responses-detail-SingleProcessing-classifyImage-503" class="nav nav-tabs nav-tabs-examples" >
+                                <li class="active">
+                                  <a data-toggle="tab" href="#responses-SingleProcessing-classifyImage-503-schema">Schema</a>
+                                </li>
+
+
+
+
+                            </ul>
+
+
+                            <div class="tab-content" id="responses-SingleProcessing-classifyImage-503-wrapper" style='margin-bottom: 10px;'>
+                              <div class="tab-pane active" id="responses-SingleProcessing-classifyImage-503-schema">
+                                <div id="responses-SingleProcessing-classifyImage-schema-503" class="exampleStyle">
+                                  <script>
+                                    $(document).ready(function() {
+                                      var schemaWrapper = {
+  "description" : "Dynamic inference queue wait timeout",
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "$ref" : "#/components/schemas/ErrorResponse"
+      },
+      "examples" : {
+        "queueTimeout" : {
+          "value" : {
+            "error" : "Inference queue timeout",
+            "timeout_seconds" : 15
+          }
+        }
+      }
+    }
+  }
+};
+                                      var schema = findNode('schema',schemaWrapper).schema;
+                                      if (!schema) {
+                                        schema = schemaWrapper.schema;
+                                      }
+                                      if (schema == null) {
+                                        return;
+                                      }
+                                      if (schema.$ref != null) {
+                                        schema = defsParser.$refs.get(schema.$ref);
+                                        if (schema.properties != null) {
+                                          Object.keys(schema.properties).forEach( (item) => {
+                                            if (schema.properties[item].$ref != null) {
+                                              schema.properties[item] = defsParser.$refs.get(schema.properties[item].$ref);
+                                            }
+                                          });
+                                        }
+                                      } else if (schema.items != null && schema.items.$ref != null) {
+                                        schema.items = defsParser.$refs.get(schema.items.$ref);
+                                      } else {
+                                        schemaWrapper.definitions = Object.assign({}, defs);
+                                        $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                          console.log(err);
+                                        });
+                                      }
+
+                                      var view = new JSONSchemaView(schema, 3);
+                                      $('#responses-SingleProcessing-classifyImage-503-schema-data').val(JSON.stringify(schema));
+                                      var result = $('#responses-SingleProcessing-classifyImage-schema-503');
+                                      result.empty();
+                                      result.append(view.render());
+                                    });
+                                  </script>
+                                </div>
+                                <input id='responses-SingleProcessing-classifyImage-503-schema-data' type='hidden' value=''></input>
+                              </div>
+                                <div class="tab-pane" id="examples-SingleProcessing-classifyImage-503-example">
+                                  <pre class="prettyprint"><code class="json"></code></pre>
+                                </div>
+                            </div>
                         </article>
                       </div>
                       <hr>
@@ -4743,6 +5004,9 @@ Ensemble voting strategy for classification
 
 **Caching**: Results are cached with Redis based on image hash and model configuration.
 Cached responses return near-instant results with &#x60;cached&#x3D;true&#x60; indicator.
+
+**Dynamic batching**: Classification stage may be dynamically micro-batched server-side.
+This behavior is transparent to clients.
 </p>
                         <p></p>
                         <br />
@@ -5338,6 +5602,179 @@ Include preprocessed images in response (results not cached if true)
                                 </div>
                                 <input id='responses-SingleProcessing-fullProcess-500-schema-data' type='hidden' value=''></input>
                               </div>
+                            </div>
+                            <h3 id="examples-SingleProcessing-fullProcess-title-429"></h3>
+                            <p id="examples-SingleProcessing-fullProcess-description-429" class="marked"></p>
+                            <script>
+                              var responseSingleProcessing429_description = `Dynamic inference queue is full`;
+                              var responseSingleProcessing429_description_break = responseSingleProcessing429_description.indexOf('\n');
+                              if (responseSingleProcessing429_description_break == -1) {
+                                $("#examples-SingleProcessing-fullProcess-title-429").text("Status: 429 - " + responseSingleProcessing429_description);
+                              } else {
+                                $("#examples-SingleProcessing-fullProcess-title-429").text("Status: 429 - " + responseSingleProcessing429_description.substring(0, responseSingleProcessing429_description_break));
+                                $("#examples-SingleProcessing-fullProcess-description-429").html(responseSingleProcessing429_description.substring(responseSingleProcessing429_description_break));
+                              }
+                            </script>
+
+
+                            <ul id="responses-detail-SingleProcessing-fullProcess-429" class="nav nav-tabs nav-tabs-examples" >
+                                <li class="active">
+                                  <a data-toggle="tab" href="#responses-SingleProcessing-fullProcess-429-schema">Schema</a>
+                                </li>
+
+
+
+
+                            </ul>
+
+
+                            <div class="tab-content" id="responses-SingleProcessing-fullProcess-429-wrapper" style='margin-bottom: 10px;'>
+                              <div class="tab-pane active" id="responses-SingleProcessing-fullProcess-429-schema">
+                                <div id="responses-SingleProcessing-fullProcess-schema-429" class="exampleStyle">
+                                  <script>
+                                    $(document).ready(function() {
+                                      var schemaWrapper = {
+  "description" : "Dynamic inference queue is full",
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "$ref" : "#/components/schemas/ErrorResponse"
+      },
+      "examples" : {
+        "queueFull" : {
+          "value" : {
+            "error" : "Dynamic batch queue is full"
+          }
+        }
+      }
+    }
+  }
+};
+                                      var schema = findNode('schema',schemaWrapper).schema;
+                                      if (!schema) {
+                                        schema = schemaWrapper.schema;
+                                      }
+                                      if (schema == null) {
+                                        return;
+                                      }
+                                      if (schema.$ref != null) {
+                                        schema = defsParser.$refs.get(schema.$ref);
+                                        if (schema.properties != null) {
+                                          Object.keys(schema.properties).forEach( (item) => {
+                                            if (schema.properties[item].$ref != null) {
+                                              schema.properties[item] = defsParser.$refs.get(schema.properties[item].$ref);
+                                            }
+                                          });
+                                        }
+                                      } else if (schema.items != null && schema.items.$ref != null) {
+                                        schema.items = defsParser.$refs.get(schema.items.$ref);
+                                      } else {
+                                        schemaWrapper.definitions = Object.assign({}, defs);
+                                        $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                          console.log(err);
+                                        });
+                                      }
+
+                                      var view = new JSONSchemaView(schema, 3);
+                                      $('#responses-SingleProcessing-fullProcess-429-schema-data').val(JSON.stringify(schema));
+                                      var result = $('#responses-SingleProcessing-fullProcess-schema-429');
+                                      result.empty();
+                                      result.append(view.render());
+                                    });
+                                  </script>
+                                </div>
+                                <input id='responses-SingleProcessing-fullProcess-429-schema-data' type='hidden' value=''></input>
+                              </div>
+                                <div class="tab-pane" id="examples-SingleProcessing-fullProcess-429-example">
+                                  <pre class="prettyprint"><code class="json"></code></pre>
+                                </div>
+                            </div>
+                            <h3 id="examples-SingleProcessing-fullProcess-title-503"></h3>
+                            <p id="examples-SingleProcessing-fullProcess-description-503" class="marked"></p>
+                            <script>
+                              var responseSingleProcessing503_description = `Dynamic inference queue wait timeout`;
+                              var responseSingleProcessing503_description_break = responseSingleProcessing503_description.indexOf('\n');
+                              if (responseSingleProcessing503_description_break == -1) {
+                                $("#examples-SingleProcessing-fullProcess-title-503").text("Status: 503 - " + responseSingleProcessing503_description);
+                              } else {
+                                $("#examples-SingleProcessing-fullProcess-title-503").text("Status: 503 - " + responseSingleProcessing503_description.substring(0, responseSingleProcessing503_description_break));
+                                $("#examples-SingleProcessing-fullProcess-description-503").html(responseSingleProcessing503_description.substring(responseSingleProcessing503_description_break));
+                              }
+                            </script>
+
+
+                            <ul id="responses-detail-SingleProcessing-fullProcess-503" class="nav nav-tabs nav-tabs-examples" >
+                                <li class="active">
+                                  <a data-toggle="tab" href="#responses-SingleProcessing-fullProcess-503-schema">Schema</a>
+                                </li>
+
+
+
+
+                            </ul>
+
+
+                            <div class="tab-content" id="responses-SingleProcessing-fullProcess-503-wrapper" style='margin-bottom: 10px;'>
+                              <div class="tab-pane active" id="responses-SingleProcessing-fullProcess-503-schema">
+                                <div id="responses-SingleProcessing-fullProcess-schema-503" class="exampleStyle">
+                                  <script>
+                                    $(document).ready(function() {
+                                      var schemaWrapper = {
+  "description" : "Dynamic inference queue wait timeout",
+  "content" : {
+    "application/json" : {
+      "schema" : {
+        "$ref" : "#/components/schemas/ErrorResponse"
+      },
+      "examples" : {
+        "queueTimeout" : {
+          "value" : {
+            "error" : "Inference queue timeout",
+            "timeout_seconds" : 15
+          }
+        }
+      }
+    }
+  }
+};
+                                      var schema = findNode('schema',schemaWrapper).schema;
+                                      if (!schema) {
+                                        schema = schemaWrapper.schema;
+                                      }
+                                      if (schema == null) {
+                                        return;
+                                      }
+                                      if (schema.$ref != null) {
+                                        schema = defsParser.$refs.get(schema.$ref);
+                                        if (schema.properties != null) {
+                                          Object.keys(schema.properties).forEach( (item) => {
+                                            if (schema.properties[item].$ref != null) {
+                                              schema.properties[item] = defsParser.$refs.get(schema.properties[item].$ref);
+                                            }
+                                          });
+                                        }
+                                      } else if (schema.items != null && schema.items.$ref != null) {
+                                        schema.items = defsParser.$refs.get(schema.items.$ref);
+                                      } else {
+                                        schemaWrapper.definitions = Object.assign({}, defs);
+                                        $RefParser.dereference(schemaWrapper).catch(function(err) {
+                                          console.log(err);
+                                        });
+                                      }
+
+                                      var view = new JSONSchemaView(schema, 3);
+                                      $('#responses-SingleProcessing-fullProcess-503-schema-data').val(JSON.stringify(schema));
+                                      var result = $('#responses-SingleProcessing-fullProcess-schema-503');
+                                      result.empty();
+                                      result.append(view.render());
+                                    });
+                                  </script>
+                                </div>
+                                <input id='responses-SingleProcessing-fullProcess-503-schema-data' type='hidden' value=''></input>
+                              </div>
+                                <div class="tab-pane" id="examples-SingleProcessing-fullProcess-503-example">
+                                  <pre class="prettyprint"><code class="json"></code></pre>
+                                </div>
                             </div>
                         </article>
                       </div>

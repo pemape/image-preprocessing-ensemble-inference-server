@@ -3,6 +3,7 @@ from datetime import date, datetime  # noqa: F401
 from typing import List, Dict  # noqa: F401
 
 from ensemble_inference.models.base_model import Model
+from ensemble_inference.models.batch_processing_metrics import BatchProcessingMetrics
 from ensemble_inference.models.classification_result import ClassificationResult
 from ensemble_inference.models.image_processing_times import ImageProcessingTimes
 from ensemble_inference.models.image_properties import ImageProperties
@@ -10,6 +11,7 @@ from ensemble_inference.models.operation_status import OperationStatus
 from ensemble_inference.models.preprocessed_images import PreprocessedImages
 from ensemble_inference import util
 
+from ensemble_inference.models.batch_processing_metrics import BatchProcessingMetrics  # noqa: E501
 from ensemble_inference.models.classification_result import ClassificationResult  # noqa: E501
 from ensemble_inference.models.image_processing_times import ImageProcessingTimes  # noqa: E501
 from ensemble_inference.models.image_properties import ImageProperties  # noqa: E501
@@ -22,7 +24,7 @@ class ProcessResult(Model):
     Do not edit the class manually.
     """
 
-    def __init__(self, status=None, cached=None, image_name=None, image_index=None, image_properties=None, image_processing_times=None, classification=None, preprocessed_images=None):  # noqa: E501
+    def __init__(self, status=None, cached=None, image_name=None, image_index=None, image_properties=None, image_processing_times=None, batch_processing_metrics=None, classification=None, preprocessed_images=None):  # noqa: E501
         """ProcessResult - a model defined in OpenAPI
 
         :param status: The status of this ProcessResult.  # noqa: E501
@@ -37,6 +39,8 @@ class ProcessResult(Model):
         :type image_properties: ImageProperties
         :param image_processing_times: The image_processing_times of this ProcessResult.  # noqa: E501
         :type image_processing_times: ImageProcessingTimes
+        :param batch_processing_metrics: The batch_processing_metrics of this ProcessResult.  # noqa: E501
+        :type batch_processing_metrics: BatchProcessingMetrics
         :param classification: The classification of this ProcessResult.  # noqa: E501
         :type classification: ClassificationResult
         :param preprocessed_images: The preprocessed_images of this ProcessResult.  # noqa: E501
@@ -49,6 +53,7 @@ class ProcessResult(Model):
             'image_index': int,
             'image_properties': ImageProperties,
             'image_processing_times': ImageProcessingTimes,
+            'batch_processing_metrics': BatchProcessingMetrics,
             'classification': ClassificationResult,
             'preprocessed_images': PreprocessedImages
         }
@@ -60,6 +65,7 @@ class ProcessResult(Model):
             'image_index': 'image_index',
             'image_properties': 'image_properties',
             'image_processing_times': 'image_processing_times',
+            'batch_processing_metrics': 'batch_processing_metrics',
             'classification': 'classification',
             'preprocessed_images': 'preprocessed_images'
         }
@@ -70,6 +76,7 @@ class ProcessResult(Model):
         self._image_index = image_index
         self._image_properties = image_properties
         self._image_processing_times = image_processing_times
+        self._batch_processing_metrics = batch_processing_metrics
         self._classification = classification
         self._preprocessed_images = preprocessed_images
 
@@ -219,6 +226,27 @@ class ProcessResult(Model):
         """
 
         self._image_processing_times = image_processing_times
+
+    @property
+    def batch_processing_metrics(self) -> BatchProcessingMetrics:
+        """Gets the batch_processing_metrics of this ProcessResult.
+
+
+        :return: The batch_processing_metrics of this ProcessResult.
+        :rtype: BatchProcessingMetrics
+        """
+        return self._batch_processing_metrics
+
+    @batch_processing_metrics.setter
+    def batch_processing_metrics(self, batch_processing_metrics: BatchProcessingMetrics):
+        """Sets the batch_processing_metrics of this ProcessResult.
+
+
+        :param batch_processing_metrics: The batch_processing_metrics of this ProcessResult.
+        :type batch_processing_metrics: BatchProcessingMetrics
+        """
+
+        self._batch_processing_metrics = batch_processing_metrics
 
     @property
     def classification(self) -> ClassificationResult:

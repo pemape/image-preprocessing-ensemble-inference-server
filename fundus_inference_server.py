@@ -124,6 +124,30 @@ class DynamicBatchInferenceManager:
 
         return future.result(timeout=timeout_seconds)
 
+    def _build_batch_metrics(
+        self,
+        enqueued_at: float,
+        execution_started_at: float,
+        execution_finished_at: float,
+        batch_size: int,
+        batch_id: str,
+    ) -> Dict:
+        """Build per-request batch timing metrics in milliseconds."""
+        return {
+            "batch_id": batch_id,
+            "batch_wait_ms": round(
+                max(0.0, (execution_started_at - enqueued_at) * 1000.0), 2
+            ),
+            "batch_execution_ms": round(
+                max(0.0, (execution_finished_at - execution_started_at) * 1000.0),
+                2,
+            ),
+            "batch_total_ms": round(
+                max(0.0, (execution_finished_at - enqueued_at) * 1000.0), 2
+            ),
+            "batch_size": batch_size,
+        }
+
     def _run_worker(self) -> None:
         while not self._stop_event.is_set():
             batch = self._collect_batch()
@@ -166,15 +190,29 @@ class DynamicBatchInferenceManager:
 
         for voting_strategy, items in grouped.items():
             try:
+                execution_started_at = time.monotonic()
+                batch_id = f"BATCH-{uuid.uuid4().hex[:12]}"
                 images_batch = [item["images"] for item in items]
                 results = self.classifier.classify_batch(
                     images_batch,
                     voting_strategy=voting_strategy,
                 )
+                execution_finished_at = time.monotonic()
 
                 for item, result in zip(items, results):
                     if not item["future"].done():
-                        item["future"].set_result(result)
+                        item["future"].set_result(
+                            {
+                                "classification_result": result,
+                                "batch_metrics": self._build_batch_metrics(
+                                    enqueued_at=item["enqueued_at"],
+                                    execution_started_at=execution_started_at,
+                                    execution_finished_at=execution_finished_at,
+                                    batch_size=len(items),
+                                    batch_id=batch_id,
+                                ),
+                            }
+                        )
             except Exception as e:
                 self.logger.error(
                     "Dynamic batch inference failed (strategy=%s): %s",
@@ -789,14 +827,17 @@ class FundusInferenceServer:
             queue_timeout = self.classifier.config.get("dynamic_batching", {}).get(
                 "request_timeout_s", 15
             )
+            batch_metrics = None
 
             if self.dynamic_batcher.enabled:
                 try:
-                    results = self.dynamic_batcher.submit(
+                    batch_response = self.dynamic_batcher.submit(
                         preprocessed_images,
                         voting_strategy=voting_strategy,
                         timeout_seconds=queue_timeout,
                     )
+                    results = batch_response["classification_result"]
+                    batch_metrics = batch_response.get("batch_metrics")
                 except RuntimeError as e:
                     return jsonify({"error": str(e)}), 429
                 except FuturesTimeoutError:
@@ -820,6 +861,7 @@ class FundusInferenceServer:
             response = ClassifyResponse()
             response.status = OperationStatus.SUCCESS
             response.classification_time_seconds = round(classification_time, 4)
+            response.batch_processing_metrics = batch_metrics
             response.classification = self._build_classification_result(results)
 
             return jsonify(response.to_dict())
@@ -893,6 +935,15 @@ class FundusInferenceServer:
                         "image_processing_times"
                     ] = image_processing_times.to_dict()
 
+                    # Keep batch metrics in a dedicated sibling object.
+                    cached_result["process_result"]["batch_processing_metrics"] = {
+                        "batch_id": None,
+                        "batch_wait_ms": 0.0,
+                        "batch_execution_ms": 0.0,
+                        "batch_total_ms": 0.0,
+                        "batch_size": 0,
+                    }
+
                 # Update timestamp to current time in metadata
                 if (
                     "process_metadata" in cached_result
@@ -954,14 +1005,19 @@ class FundusInferenceServer:
                 queue_timeout = self.classifier.config.get(
                     "dynamic_batching", {}
                 ).get("request_timeout_s", 15)
+                batch_metrics = None
 
                 if self.dynamic_batcher.enabled:
                     try:
-                        classification_results_from_classifier = self.dynamic_batcher.submit(
+                        batch_response = self.dynamic_batcher.submit(
                             preprocessed_image_variants,
                             voting_strategy=voting_strategy,
                             timeout_seconds=queue_timeout,
                         )
+                        classification_results_from_classifier = batch_response[
+                            "classification_result"
+                        ]
+                        batch_metrics = batch_response.get("batch_metrics")
                     except RuntimeError as e:
                         return jsonify({"error": str(e)}), 429
                     except FuturesTimeoutError:
@@ -1042,6 +1098,7 @@ class FundusInferenceServer:
                     image_processing_times=image_processing_times,
                     classification=classification_result,
                 )
+                process_result.batch_processing_metrics = batch_metrics
 
                 # Optionally include preprocessed images
                 if include_encoded_images:

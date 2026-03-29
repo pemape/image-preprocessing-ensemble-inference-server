@@ -3,9 +3,11 @@ from datetime import date, datetime  # noqa: F401
 from typing import List, Dict  # noqa: F401
 
 from ensemble_inference.models.base_model import Model
+from ensemble_inference.models.dynamic_batching_config import DynamicBatchingConfig
 from ensemble_inference.models.voting_strategy_enum import VotingStrategyEnum
 from ensemble_inference import util
 
+from ensemble_inference.models.dynamic_batching_config import DynamicBatchingConfig  # noqa: E501
 from ensemble_inference.models.voting_strategy_enum import VotingStrategyEnum  # noqa: E501
 
 class InfoResponseModulesClassification(Model):
@@ -14,7 +16,7 @@ class InfoResponseModulesClassification(Model):
     Do not edit the class manually.
     """
 
-    def __init__(self, enabled=None, models=None, voting_strategy=VotingStrategyEnum.SOFT):  # noqa: E501
+    def __init__(self, enabled=None, models=None, voting_strategy=VotingStrategyEnum.SOFT, dynamic_batching=None):  # noqa: E501
         """InfoResponseModulesClassification - a model defined in OpenAPI
 
         :param enabled: The enabled of this InfoResponseModulesClassification.  # noqa: E501
@@ -23,22 +25,27 @@ class InfoResponseModulesClassification(Model):
         :type models: int
         :param voting_strategy: The voting_strategy of this InfoResponseModulesClassification.  # noqa: E501
         :type voting_strategy: VotingStrategyEnum
+        :param dynamic_batching: The dynamic_batching of this InfoResponseModulesClassification.  # noqa: E501
+        :type dynamic_batching: DynamicBatchingConfig
         """
         self.openapi_types = {
             'enabled': bool,
             'models': int,
-            'voting_strategy': VotingStrategyEnum
+            'voting_strategy': VotingStrategyEnum,
+            'dynamic_batching': DynamicBatchingConfig
         }
 
         self.attribute_map = {
             'enabled': 'enabled',
             'models': 'models',
-            'voting_strategy': 'voting_strategy'
+            'voting_strategy': 'voting_strategy',
+            'dynamic_batching': 'dynamic_batching'
         }
 
         self._enabled = enabled
         self._models = models
         self._voting_strategy = voting_strategy
+        self._dynamic_batching = dynamic_batching
 
     @classmethod
     def from_dict(cls, dikt) -> 'InfoResponseModulesClassification':
@@ -113,3 +120,24 @@ class InfoResponseModulesClassification(Model):
         """
 
         self._voting_strategy = voting_strategy
+
+    @property
+    def dynamic_batching(self) -> DynamicBatchingConfig:
+        """Gets the dynamic_batching of this InfoResponseModulesClassification.
+
+
+        :return: The dynamic_batching of this InfoResponseModulesClassification.
+        :rtype: DynamicBatchingConfig
+        """
+        return self._dynamic_batching
+
+    @dynamic_batching.setter
+    def dynamic_batching(self, dynamic_batching: DynamicBatchingConfig):
+        """Sets the dynamic_batching of this InfoResponseModulesClassification.
+
+
+        :param dynamic_batching: The dynamic_batching of this InfoResponseModulesClassification.
+        :type dynamic_batching: DynamicBatchingConfig
+        """
+
+        self._dynamic_batching = dynamic_batching

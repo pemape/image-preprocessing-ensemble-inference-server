@@ -15,7 +15,7 @@ from ensemble_inference import util
 def classify_image(body, voting_strategy=None):  # noqa: E501
     """Classify from preprocessed images
 
-    Classify diabetic retinopathy from preprocessed image variants # noqa: E501
+    Classify diabetic retinopathy from preprocessed image variants.  Dynamic batching is handled transparently on the server side. Clients do not need to provide any batching-specific path parameter.  # noqa: E501
 
     :param classify_image_request: 
     :type classify_image_request: dict | bytes
@@ -35,7 +35,7 @@ def classify_image(body, voting_strategy=None):  # noqa: E501
 def full_process(image, voting_strategy=None, include_encoded_images=None):  # noqa: E501
     """Full pipeline (preprocess + classify)
 
-    Complete pipeline from raw image to classification result.  **Single Image Only**: This endpoint accepts exactly ONE image.  **Caching**: Results are cached with Redis based on image hash and model configuration. Cached responses return near-instant results with &#x60;cached&#x3D;true&#x60; indicator.  # noqa: E501
+    Complete pipeline from raw image to classification result.  **Single Image Only**: This endpoint accepts exactly ONE image.  **Caching**: Results are cached with Redis based on image hash and model configuration. Cached responses return near-instant results with &#x60;cached&#x3D;true&#x60; indicator.  **Dynamic batching**: Classification stage may be dynamically micro-batched server-side. This behavior is transparent to clients.  # noqa: E501
 
     :param image: Fundus image file (JPEG, PNG, TIFF) - **SINGLE IMAGE ONLY**
     :type image: str
