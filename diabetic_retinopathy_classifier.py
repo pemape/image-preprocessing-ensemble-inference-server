@@ -15,6 +15,7 @@ from pathlib import Path
 import logging
 from typing import Dict, List, Tuple, Optional, Union
 import json
+import os
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pretrainedmodels
@@ -306,14 +307,55 @@ class DiabeticRetinopathyClassifier:
         self.logger = self._setup_logging()
         self.device = self._setup_device()
 
-        # Pull latest models from DVC/Azure Blob
-        print("Syncing models from DVC (Azure Blob Storage)...")
-        subprocess.run(["dvc", "pull", "-q"], check=False)
+        # Sync latest models from DVC/Azure Blob
+        self._sync_models_from_dvc()
 
         # Initialize model ensemble
         self.ensemble = self._create_ensemble()
 
         self.logger.info("DiabeticRetinopathyClassifier initialized successfully")
+
+    def _sync_models_from_dvc(self) -> None:
+        """Configure DVC Azure remote (when token exists) and pull models."""
+        remote_name = "azure_dvc"
+        sas_token = os.getenv("AZURE_STORAGE_SAS_TOKEN")
+
+        if sas_token:
+            self.logger.info(
+                "Configuring DVC remote '%s' with AZURE_STORAGE_SAS_TOKEN",
+                remote_name,
+            )
+            modify_result = subprocess.run(
+                ["dvc", "remote", "modify", remote_name, "sas_token", sas_token],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            if modify_result.returncode != 0:
+                self.logger.warning(
+                    "Failed to set DVC remote token for '%s'. stderr: %s",
+                    remote_name,
+                    (modify_result.stderr or "").strip(),
+                )
+        else:
+            self.logger.warning(
+                "AZURE_STORAGE_SAS_TOKEN is not set; attempting DVC pull with existing remote credentials"
+            )
+
+        self.logger.info("Syncing models from DVC (Azure Blob Storage)...")
+        pull_result = subprocess.run(
+            ["dvc", "pull", "-q"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        if pull_result.returncode != 0:
+            self.logger.warning(
+                "DVC model sync failed (continuing with local model files). stderr: %s",
+                (pull_result.stderr or "").strip(),
+            )
 
     def _load_config(self, config_path: str) -> dict:
         """Load classifier configuration."""

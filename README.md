@@ -284,7 +284,18 @@ Fastest way to get started - see [Docker Deployment](#docker-deployment-recommen
 
   For persistence, add the export command to your shell profile (`.bashrc`, `.zshrc`, etc.) or your PowerShell profile.
 
-3. **Pull models from Azure Blob Storage:**
+3. **Configure DVC remote with your SAS token:**
+  ```powershell
+  # Windows (PowerShell)
+  dvc remote modify azure_dvc sas_token $env:AZURE_STORAGE_SAS_TOKEN
+  ```
+
+  ```bash
+  # Linux/Mac (bash/zsh)
+  dvc remote modify azure_dvc sas_token $AZURE_STORAGE_SAS_TOKEN
+  ```
+
+4. **Pull models from Azure Blob Storage:**
    ```bash
    dvc pull
    ```
@@ -292,7 +303,7 @@ Fastest way to get started - see [Docker Deployment](#docker-deployment-recommen
    This downloads all trained models from Azure Blob Storage to your local `models/` directory.
    The models are tracked by DVC and not stored in Git (only `.dvc` metadata files are in Git).
 
-4. **Verify models were downloaded:**
+5. **Verify models were downloaded:**
    ```bash
    # Windows
    dir models\*.pt
