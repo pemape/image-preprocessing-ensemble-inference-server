@@ -36,7 +36,8 @@
                 "ms-toolsai.jupyter",
                 "ms-azuretools.vscode-docker",
                 "github.vscode-github-actions",
-                "ms-vscode.makefile-tools"
+                "ms-vscode.makefile-tools",
+                "mhutchie.git-graph"
             ],
             "settings": {
                 "python.defaultInterpreterPath": "/usr/local/bin/python",
