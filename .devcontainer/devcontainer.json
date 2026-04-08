@@ -24,7 +24,8 @@
     "containerEnv": {
         "PYTHONUNBUFFERED": "1",
         "PIP_DISABLE_PIP_VERSION_CHECK": "1",
-        "AZURE_STORAGE_SAS_TOKEN": "${localEnv:AZURE_STORAGE_SAS_TOKEN}"
+        "AZURE_STORAGE_SAS_TOKEN": "${localEnv:AZURE_STORAGE_SAS_TOKEN}",
+        "PROCESSING_SERVICE_PORT": "${localEnv:PROCESSING_SERVICE_PORT:5000}"
     },
     "customizations": {
         "vscode": {

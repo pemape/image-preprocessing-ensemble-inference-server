@@ -237,7 +237,7 @@ class FundusInferenceServer:
         preprocessing_config: str,
         classifier_config: Optional[str] = None,
         host: str = "0.0.0.0",
-        port: int = 5000,
+        port: int = int(os.environ.get("PROCESSING_SERVICE_PORT", 5000)),
         debug: bool = False,
         redis_config: Optional[Dict] = None,
     ):
@@ -1382,7 +1382,12 @@ def main():
         help="Path to classifier configuration file",
     )
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Server host")
-    parser.add_argument("--port", type=int, default=5000, help="Server port")
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("PROCESSING_SERVICE_PORT", 5000)),
+        help="Server port (default: env PROCESSING_SERVICE_PORT or 5000)",
+    )
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
 
     # Redis configuration arguments (override config file)
