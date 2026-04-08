@@ -6,6 +6,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PROCESSING_SERVICE_PORT=5032 \
     DEBIAN_FRONTEND=noninteractive
 
 # Install system dependencies for image processing
@@ -31,15 +32,15 @@ COPY . .
 RUN mkdir -p /app/models /app/logs
 
 # Expose Flask API port
-EXPOSE 5000
+EXPOSE ${PROCESSING_SERVICE_PORT}
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:5000/health || exit 1
+    CMD sh -c 'curl -f "http://localhost:${PROCESSING_SERVICE_PORT}/health" || exit 1'
 
 # Start Flask API server
 CMD ["python", "fundus_inference_server.py", \
     "--preprocessing-config", "configs/preprocessing_config.yaml", \
     "--classifier-config", "configs/classifier_config.yaml", \
     "--host", "0.0.0.0", \
-    "--port", "5000"]
+    "--port", "${PROCESSING_SERVICE_PORT}"]
