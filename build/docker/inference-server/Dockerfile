@@ -6,7 +6,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PROCESSING_SERVICE_PORT=5032 \
+    PROCESSING_SERVICE_PORT=5000 \
     DEBIAN_FRONTEND=noninteractive
 
 # Install system dependencies for image processing
@@ -42,5 +42,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 CMD ["python", "fundus_inference_server.py", \
     "--preprocessing-config", "configs/preprocessing_config.yaml", \
     "--classifier-config", "configs/classifier_config.yaml", \
-    "--host", "0.0.0.0", \
-    "--port", "${PROCESSING_SERVICE_PORT}"]
+    "--host", "0.0.0.0"]

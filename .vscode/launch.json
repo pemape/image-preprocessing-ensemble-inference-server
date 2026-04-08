@@ -38,8 +38,6 @@
                 "configs/classifier_config.yaml",
                 "--host",
                 "0.0.0.0",
-                "--port",
-                "5032",
                 "--debug",
             ],
             "console": "integratedTerminal",
