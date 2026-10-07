@@ -24,7 +24,7 @@ WORKDIR /app
 
 # Copy requirements and install dependencies
 COPY requirements.txt .
-RUN pip install --upgrade pip setuptools wheel && \
+RUN pip install --upgrade pip "setuptools>=80,<81" wheel && \
     pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu130 && \
     pip install --no-cache-dir -r requirements.txt
 

@@ -3,7 +3,7 @@ Flask==3.0.0
 connexion[swagger-ui]>=2.14.2
 werkzeug>=3.0.0
 python-dateutil>=2.8.0
-setuptools>=80.0.0
+setuptools>=80.0.0,<81  # omnixai needs pkg_resources (removed in setuptools 82)
 swagger-ui-bundle>=0.0.2
 
 # Deep Learning & Computer Vision
