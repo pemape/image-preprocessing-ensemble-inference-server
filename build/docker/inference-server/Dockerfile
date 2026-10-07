@@ -24,7 +24,8 @@ COPY requirements.txt .
 RUN pip install --upgrade pip setuptools wheel && \
     pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu130 && \
     pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir --no-deps omnixai
+    pip install --no-cache-dir --no-deps omnixai && \
+    pip install --no-cache-dir --no-deps opencv-python
 
 # Copy the rest of the flask-app sources
 COPY . .
