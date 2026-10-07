@@ -50,3 +50,5 @@ pytest-cov>=2.10.0
 
 # Additional ML Libraries
 pretrainedmodels==0.7.4
+
+omnixai
