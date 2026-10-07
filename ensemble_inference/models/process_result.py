@@ -5,6 +5,7 @@ from typing import List, Dict  # noqa: F401
 from ensemble_inference.models.base_model import Model
 from ensemble_inference.models.batch_processing_metrics import BatchProcessingMetrics
 from ensemble_inference.models.classification_result import ClassificationResult
+from ensemble_inference.models.explanation_result import ExplanationResult
 from ensemble_inference.models.image_processing_times import ImageProcessingTimes
 from ensemble_inference.models.image_properties import ImageProperties
 from ensemble_inference.models.operation_status import OperationStatus
@@ -13,6 +14,7 @@ from ensemble_inference import util
 
 from ensemble_inference.models.batch_processing_metrics import BatchProcessingMetrics  # noqa: E501
 from ensemble_inference.models.classification_result import ClassificationResult  # noqa: E501
+from ensemble_inference.models.explanation_result import ExplanationResult  # noqa: E501
 from ensemble_inference.models.image_processing_times import ImageProcessingTimes  # noqa: E501
 from ensemble_inference.models.image_properties import ImageProperties  # noqa: E501
 from ensemble_inference.models.operation_status import OperationStatus  # noqa: E501
@@ -24,7 +26,7 @@ class ProcessResult(Model):
     Do not edit the class manually.
     """
 
-    def __init__(self, status=None, cached=None, image_name=None, image_index=None, image_properties=None, image_processing_times=None, batch_processing_metrics=None, classification=None, preprocessed_images=None):  # noqa: E501
+    def __init__(self, status=None, cached=None, image_name=None, image_index=None, image_properties=None, image_processing_times=None, batch_processing_metrics=None, classification=None, explanation=None, preprocessed_images=None):  # noqa: E501
         """ProcessResult - a model defined in OpenAPI
 
         :param status: The status of this ProcessResult.  # noqa: E501
@@ -43,6 +45,8 @@ class ProcessResult(Model):
         :type batch_processing_metrics: BatchProcessingMetrics
         :param classification: The classification of this ProcessResult.  # noqa: E501
         :type classification: ClassificationResult
+        :param explanation: The explanation of this ProcessResult.  # noqa: E501
+        :type explanation: ExplanationResult
         :param preprocessed_images: The preprocessed_images of this ProcessResult.  # noqa: E501
         :type preprocessed_images: PreprocessedImages
         """
@@ -55,6 +59,7 @@ class ProcessResult(Model):
             'image_processing_times': ImageProcessingTimes,
             'batch_processing_metrics': BatchProcessingMetrics,
             'classification': ClassificationResult,
+            'explanation': ExplanationResult,
             'preprocessed_images': PreprocessedImages
         }
 
@@ -67,6 +72,7 @@ class ProcessResult(Model):
             'image_processing_times': 'image_processing_times',
             'batch_processing_metrics': 'batch_processing_metrics',
             'classification': 'classification',
+            'explanation': 'explanation',
             'preprocessed_images': 'preprocessed_images'
         }
 
@@ -78,6 +84,7 @@ class ProcessResult(Model):
         self._image_processing_times = image_processing_times
         self._batch_processing_metrics = batch_processing_metrics
         self._classification = classification
+        self._explanation = explanation
         self._preprocessed_images = preprocessed_images
 
     @classmethod
@@ -268,6 +275,27 @@ class ProcessResult(Model):
         """
 
         self._classification = classification
+
+    @property
+    def explanation(self) -> ExplanationResult:
+        """Gets the explanation of this ProcessResult.
+
+
+        :return: The explanation of this ProcessResult.
+        :rtype: ExplanationResult
+        """
+        return self._explanation
+
+    @explanation.setter
+    def explanation(self, explanation: ExplanationResult):
+        """Sets the explanation of this ProcessResult.
+
+
+        :param explanation: The explanation of this ProcessResult.
+        :type explanation: ExplanationResult
+        """
+
+        self._explanation = explanation
 
     @property
     def preprocessed_images(self) -> PreprocessedImages:

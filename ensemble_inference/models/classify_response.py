@@ -5,11 +5,13 @@ from typing import List, Dict  # noqa: F401
 from ensemble_inference.models.base_model import Model
 from ensemble_inference.models.batch_processing_metrics import BatchProcessingMetrics
 from ensemble_inference.models.classification_result import ClassificationResult
+from ensemble_inference.models.explanation_result import ExplanationResult
 from ensemble_inference.models.operation_status import OperationStatus
 from ensemble_inference import util
 
 from ensemble_inference.models.batch_processing_metrics import BatchProcessingMetrics  # noqa: E501
 from ensemble_inference.models.classification_result import ClassificationResult  # noqa: E501
+from ensemble_inference.models.explanation_result import ExplanationResult  # noqa: E501
 from ensemble_inference.models.operation_status import OperationStatus  # noqa: E501
 
 class ClassifyResponse(Model):
@@ -18,7 +20,7 @@ class ClassifyResponse(Model):
     Do not edit the class manually.
     """
 
-    def __init__(self, status=None, cached=None, classification_time_seconds=None, batch_processing_metrics=None, classification=None):  # noqa: E501
+    def __init__(self, status=None, cached=None, classification_time_seconds=None, batch_processing_metrics=None, classification=None, explanation=None):  # noqa: E501
         """ClassifyResponse - a model defined in OpenAPI
 
         :param status: The status of this ClassifyResponse.  # noqa: E501
@@ -31,13 +33,16 @@ class ClassifyResponse(Model):
         :type batch_processing_metrics: BatchProcessingMetrics
         :param classification: The classification of this ClassifyResponse.  # noqa: E501
         :type classification: ClassificationResult
+        :param explanation: The explanation of this ClassifyResponse.  # noqa: E501
+        :type explanation: ExplanationResult
         """
         self.openapi_types = {
             'status': OperationStatus,
             'cached': bool,
             'classification_time_seconds': float,
             'batch_processing_metrics': BatchProcessingMetrics,
-            'classification': ClassificationResult
+            'classification': ClassificationResult,
+            'explanation': ExplanationResult
         }
 
         self.attribute_map = {
@@ -45,7 +50,8 @@ class ClassifyResponse(Model):
             'cached': 'cached',
             'classification_time_seconds': 'classification_time_seconds',
             'batch_processing_metrics': 'batch_processing_metrics',
-            'classification': 'classification'
+            'classification': 'classification',
+            'explanation': 'explanation'
         }
 
         self._status = status
@@ -53,6 +59,7 @@ class ClassifyResponse(Model):
         self._classification_time_seconds = classification_time_seconds
         self._batch_processing_metrics = batch_processing_metrics
         self._classification = classification
+        self._explanation = explanation
 
     @classmethod
     def from_dict(cls, dikt) -> 'ClassifyResponse':
@@ -171,3 +178,24 @@ class ClassifyResponse(Model):
         """
 
         self._classification = classification
+
+    @property
+    def explanation(self) -> ExplanationResult:
+        """Gets the explanation of this ClassifyResponse.
+
+
+        :return: The explanation of this ClassifyResponse.
+        :rtype: ExplanationResult
+        """
+        return self._explanation
+
+    @explanation.setter
+    def explanation(self, explanation: ExplanationResult):
+        """Sets the explanation of this ClassifyResponse.
+
+
+        :param explanation: The explanation of this ClassifyResponse.
+        :type explanation: ExplanationResult
+        """
+
+        self._explanation = explanation

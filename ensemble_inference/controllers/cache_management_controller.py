@@ -1,4 +1,4 @@
-import connexion
+import flask
 from typing import Dict
 from typing import Tuple
 from typing import Union
@@ -22,8 +22,8 @@ def clear_cache(body=None):  # noqa: E501
     :rtype: Union[CacheClearResponse, Tuple[CacheClearResponse, int], Tuple[CacheClearResponse, int, Dict[str, str]]
     """
     clear_cache_request = body
-    if connexion.request.is_json:
-        clear_cache_request = ClearCacheRequest.from_dict(connexion.request.get_json())  # noqa: E501
+    if flask.request.is_json:
+        clear_cache_request = ClearCacheRequest.from_dict(flask.request.get_json())  # noqa: E501
     return 'do some magic!'
 
 

@@ -1,4 +1,4 @@
-import connexion
+import flask
 from typing import Dict
 from typing import Tuple
 from typing import Union
@@ -12,30 +12,34 @@ from ensemble_inference.models.voting_strategy_enum import VotingStrategyEnum  #
 from ensemble_inference import util
 
 
-def classify_image(body, voting_strategy=None):  # noqa: E501
+def classify_image(body, voting_strategy=None, explain=None, explain_per_model=None):  # noqa: E501
     """Classify from preprocessed images
 
-    Classify diabetic retinopathy from preprocessed image variants.  Dynamic batching is handled transparently on the server side. Clients do not need to provide any batching-specific path parameter.  # noqa: E501
+    Classify diabetic retinopathy from preprocessed image variants.  Dynamic batching is handled transparently on the server side. Clients do not need to provide any batching-specific path parameter.  **Explainability**: Set &#x60;explain&#x3D;true&#x60; to receive a Grad-CAM explanation of the predicted class in the &#x60;explanation&#x60; field. Omit it (or &#x60;false&#x60;) to opt out. The explanation time is reported in &#x60;explanation.explanation_time_ms&#x60; and is not part of &#x60;classification_time_seconds&#x60;. If the explanation fails, the prediction is still returned with &#x60;explanation.status&#x3D;FAILED&#x60;.  # noqa: E501
 
     :param classify_image_request: 
     :type classify_image_request: dict | bytes
     :param voting_strategy: Ensemble voting strategy for classification
     :type voting_strategy: dict | bytes
+    :param explain: Request a Grad-CAM explanation alongside the prediction (opt-in). Explained requests are not cached. Returns 400 if the explainability module is not available.
+    :type explain: bool
+    :param explain_per_model: Also return one heatmap per ensemble member (only applies when explain&#x3D;true)
+    :type explain_per_model: bool
 
     :rtype: Union[ClassifyResponse, Tuple[ClassifyResponse, int], Tuple[ClassifyResponse, int, Dict[str, str]]
     """
     classify_image_request = body
-    if connexion.request.is_json:
-        classify_image_request = ClassifyImageRequest.from_dict(connexion.request.get_json())  # noqa: E501
-    if connexion.request.is_json:
-        voting_strategy =  VotingStrategyEnum.from_dict(connexion.request.get_json())  # noqa: E501
+    if flask.request.is_json:
+        classify_image_request = ClassifyImageRequest.from_dict(flask.request.get_json())  # noqa: E501
+    if flask.request.is_json:
+        voting_strategy =  VotingStrategyEnum.from_dict(flask.request.get_json())  # noqa: E501
     return 'do some magic!'
 
 
-def full_process(image, voting_strategy=None, include_encoded_images=None):  # noqa: E501
+def full_process(image, voting_strategy=None, include_encoded_images=None, explain=None, explain_per_model=None):  # noqa: E501
     """Full pipeline (preprocess + classify)
 
-    Complete pipeline from raw image to classification result.  **Single Image Only**: This endpoint accepts exactly ONE image.  **Caching**: Results are cached with Redis based on image hash and model configuration. Cached responses return near-instant results with &#x60;cached&#x3D;true&#x60; indicator.  **Dynamic batching**: Classification stage may be dynamically micro-batched server-side. This behavior is transparent to clients.  # noqa: E501
+    Complete pipeline from raw image to classification result.  **Single Image Only**: This endpoint accepts exactly ONE image.  **Caching**: Results are cached with Redis based on image hash and model configuration. Cached responses return near-instant results with &#x60;cached&#x3D;true&#x60; indicator.  **Dynamic batching**: Classification stage may be dynamically micro-batched server-side. This behavior is transparent to clients.  **Explainability**: Set &#x60;explain&#x3D;true&#x60; to receive a Grad-CAM explanation of the predicted class in &#x60;process_result.explanation&#x60;. Omit it (or &#x60;false&#x60;) to opt out. Explained requests bypass the cache (read and write), and the explanation time is reported separately in &#x60;explanation.explanation_time_ms&#x60; (not included in &#x60;image_processing_times&#x60;).  # noqa: E501
 
     :param image: Fundus image file (JPEG, PNG, TIFF) - **SINGLE IMAGE ONLY**
     :type image: str
@@ -43,11 +47,15 @@ def full_process(image, voting_strategy=None, include_encoded_images=None):  # n
     :type voting_strategy: dict | bytes
     :param include_encoded_images: Include preprocessed images in response (results not cached if true)
     :type include_encoded_images: bool
+    :param explain: Request a Grad-CAM explanation alongside the prediction (opt-in). Explained requests are not cached. Returns 400 if the explainability module is not available.
+    :type explain: bool
+    :param explain_per_model: Also return one heatmap per ensemble member (only applies when explain&#x3D;true)
+    :type explain_per_model: bool
 
     :rtype: Union[ProcessResponse, Tuple[ProcessResponse, int], Tuple[ProcessResponse, int, Dict[str, str]]
     """
-    if connexion.request.is_json:
-        voting_strategy =  VotingStrategyEnum.from_dict(connexion.request.get_json())  # noqa: E501
+    if flask.request.is_json:
+        voting_strategy =  VotingStrategyEnum.from_dict(flask.request.get_json())  # noqa: E501
     return 'do some magic!'
 
 

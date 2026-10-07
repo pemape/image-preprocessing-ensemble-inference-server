@@ -22,6 +22,11 @@ info:
     - **Dynamic voting strategies**: Soft voting (probability averaging) or hard voting (majority vote)
     - **Structured results** with confidence scores, certainty levels, and detailed class probabilities
 
+    ### Explainability (opt-in)
+    - **Grad-CAM** heatmaps (via the OmniXAI framework) explaining the ensemble prediction
+    - **Opt-in per request** with the `explain` query parameter; omitted or `false` returns the plain prediction
+    - **Optional per-model heatmaps** with `explain_per_model=true`
+
     ### Performance & Scalability
     - **Redis caching**: Hash-based caching with model configuration awareness
     - **Dynamic micro-batching**: Server-side request coalescing for inference with bounded queueing
@@ -44,6 +49,8 @@ info:
 
     - `voting_strategy`: Choose `soft` (default) or `hard` voting for ensemble classification
     - `include_encoded_images`: Set to `true` to include base64-encoded preprocessed images (not cached)
+    - `explain`: Set to `true` to include a Grad-CAM explanation next to the prediction (not cached)
+    - `explain_per_model`: With `explain=true`, also return one heatmap per ensemble member
 
     ## Dynamic Batching Behavior
 
@@ -267,9 +274,17 @@ paths:
 
         Dynamic batching is handled transparently on the server side.
         Clients do not need to provide any batching-specific path parameter.
+
+        **Explainability**: Set `explain=true` to receive a Grad-CAM explanation of the
+        predicted class in the `explanation` field. Omit it (or `false`) to opt out.
+        The explanation time is reported in `explanation.explanation_time_ms` and is not part of
+        `classification_time_seconds`. If the explanation fails, the prediction is still returned
+        with `explanation.status=FAILED`.
       operationId: classifyImage
       parameters:
         - $ref: "#/components/parameters/VotingStrategy"
+        - $ref: "#/components/parameters/Explain"
+        - $ref: "#/components/parameters/ExplainPerModel"
       requestBody:
         required: true
         content:
@@ -298,6 +313,9 @@ paths:
                 moduleNotAvailable:
                   value:
                     error: "Classification module not available"
+                explainabilityNotAvailable:
+                  value:
+                    error: "Explainability module not available"
                 invalidVotingStrategy:
                   value:
                     error: "Invalid voting_strategy 'invalid'. Must be 'soft' or 'hard'"
@@ -347,10 +365,17 @@ paths:
 
         **Dynamic batching**: Classification stage may be dynamically micro-batched server-side.
         This behavior is transparent to clients.
+
+        **Explainability**: Set `explain=true` to receive a Grad-CAM explanation of the
+        predicted class in `process_result.explanation`. Omit it (or `false`) to opt out.
+        Explained requests bypass the cache (read and write), and the explanation time is reported
+        separately in `explanation.explanation_time_ms` (not included in `image_processing_times`).
       operationId: fullProcess
       parameters:
         - $ref: "#/components/parameters/VotingStrategy"
         - $ref: "#/components/parameters/IncludeEncodedImages"
+        - $ref: "#/components/parameters/Explain"
+        - $ref: "#/components/parameters/ExplainPerModel"
       requestBody:
         required: true
         content:
@@ -383,6 +408,9 @@ paths:
                     error: "Single image endpoint accepts only one image."
                     images_provided: 3
                     max_allowed: 1
+                explainabilityNotAvailable:
+                  value:
+                    error: "Explainability module not available"
         "500":
           description: Processing error
           content:
@@ -444,6 +472,33 @@ components:
           value: false
           summary: Exclude preprocessed encoded images (default)
 
+    Explain:
+      name: explain
+      in: query
+      description: >-
+        Request a Grad-CAM explanation alongside the prediction (opt-in).
+        Explained requests are not cached. Returns 400 if the explainability module is not available.
+      required: false
+      schema:
+        type: boolean
+        default: false
+      examples:
+        include:
+          value: true
+          summary: Include Grad-CAM explanation
+        exclude:
+          value: false
+          summary: Prediction only (default)
+
+    ExplainPerModel:
+      name: explain_per_model
+      in: query
+      description: Also return one heatmap per ensemble member (only applies when explain=true)
+      required: false
+      schema:
+        type: boolean
+        default: false
+
   schemas:
     OperationStatus:
       type: string
@@ -486,6 +541,10 @@ components:
         classification:
           $ref: "#/components/schemas/ClassificationResult"
           nullable: true
+        explanation:
+          $ref: "#/components/schemas/ExplanationResult"
+          nullable: true
+          description: Optional - included only if explain=true
         preprocessed_images:
           $ref: "#/components/schemas/PreprocessedImages"
           nullable: true
@@ -575,6 +634,20 @@ components:
                   $ref: "#/components/schemas/VotingStrategyEnum"
                 dynamic_batching:
                   $ref: "#/components/schemas/DynamicBatchingConfig"
+            explainability:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                  description: True when explain=true requests are accepted
+                method:
+                  type: string
+                  nullable: true
+                  example: gradcam
+                framework:
+                  type: string
+                  nullable: true
+                  example: OmniXAI
         endpoints:
           type: object
           additionalProperties:
@@ -705,6 +778,83 @@ components:
           nullable: true
         classification:
           $ref: "#/components/schemas/ClassificationResult"
+        explanation:
+          $ref: "#/components/schemas/ExplanationResult"
+          nullable: true
+          description: Optional - included only if explain=true
+
+    ExplanationResult:
+      type: object
+      description: Grad-CAM explanation of the ensemble prediction (explain=true)
+      properties:
+        status:
+          $ref: "#/components/schemas/OperationStatus"
+        method:
+          type: string
+          enum: [Grad-CAM]
+          example: Grad-CAM
+        framework:
+          type: string
+          description: Library that produced the explanation
+          example: OmniXAI
+        target_class_id:
+          type: string
+          enum: [DR_0, DR_1, DR_2, DR_3, DR_4]
+          description: Class the heatmap explains (the ensemble prediction)
+          example: DR_2
+        target_class_label:
+          type: string
+          example: Moderate Non-Proliferative DR
+        heatmap_overlay:
+          type: string
+          description: Base64-encoded JPEG - ensemble heatmap blended over the image
+        heatmap:
+          type: string
+          description: Base64-encoded JPEG - colorized ensemble heatmap only
+        explanation_time_ms:
+          type: number
+          format: float
+          description: Time spent generating the explanation (not included in image_processing_times)
+          example: 412.5
+        per_model:
+          type: array
+          nullable: true
+          description: Per-ensemble-member explanations (only if explain_per_model=true)
+          items:
+            $ref: "#/components/schemas/ModelExplanation"
+        error:
+          type: string
+          nullable: true
+          description: Reason the explanation failed (only if status=FAILED)
+      required:
+        - status
+
+    ModelExplanation:
+      type: object
+      description: Grad-CAM explanation of a single ensemble member
+      properties:
+        model_architecture:
+          type: string
+          example: efficientnetb4
+        preprocessing_variant:
+          type: string
+          description: Preprocessing variant the explained model consumed
+          example: rgb_clahe
+        target_layer:
+          type: string
+          description: Network layer the Grad-CAM was computed on
+          example: features.-1
+        heatmap_overlay:
+          type: string
+          description: Base64-encoded JPEG - heatmap blended over the model input image
+        heatmap:
+          type: string
+          description: Base64-encoded JPEG - colorized Grad-CAM heatmap only
+      required:
+        - model_architecture
+        - preprocessing_variant
+        - heatmap_overlay
+        - heatmap
 
     ProcessResponse:
       type: object

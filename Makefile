@@ -82,11 +82,13 @@ help: ## Show this help message
 install: ## Install required dependencies
 	@echo "Installing dependencies..."
 	$(PIP) install -r requirements.txt
+	$(PIP) install --no-deps omnixai
 	@echo "Dependencies installed successfully!"
 
 install-dev: ## Install development dependencies
 	@echo "Installing development dependencies..."
 	$(PIP) install -r requirements.txt
+	$(PIP) install --no-deps omnixai
 	$(PIP) install pytest pytest-cov black flake8 mypy jupyter
 	@echo "Development dependencies installed successfully!"
 

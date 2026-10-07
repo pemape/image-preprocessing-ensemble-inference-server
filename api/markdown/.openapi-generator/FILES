@@ -1,4 +1,3 @@
-.openapi-generator-ignore
 Apis/CacheManagementApi.md
 Apis/HealthInfoApi.md
 Apis/SingleProcessingApi.md

@@ -4,10 +4,12 @@ from typing import List, Dict  # noqa: F401
 
 from ensemble_inference.models.base_model import Model
 from ensemble_inference.models.info_response_modules_classification import InfoResponseModulesClassification
+from ensemble_inference.models.info_response_modules_explainability import InfoResponseModulesExplainability
 from ensemble_inference.models.info_response_modules_preprocessing import InfoResponseModulesPreprocessing
 from ensemble_inference import util
 
 from ensemble_inference.models.info_response_modules_classification import InfoResponseModulesClassification  # noqa: E501
+from ensemble_inference.models.info_response_modules_explainability import InfoResponseModulesExplainability  # noqa: E501
 from ensemble_inference.models.info_response_modules_preprocessing import InfoResponseModulesPreprocessing  # noqa: E501
 
 class InfoResponseModules(Model):
@@ -16,26 +18,31 @@ class InfoResponseModules(Model):
     Do not edit the class manually.
     """
 
-    def __init__(self, preprocessing=None, classification=None):  # noqa: E501
+    def __init__(self, preprocessing=None, classification=None, explainability=None):  # noqa: E501
         """InfoResponseModules - a model defined in OpenAPI
 
         :param preprocessing: The preprocessing of this InfoResponseModules.  # noqa: E501
         :type preprocessing: InfoResponseModulesPreprocessing
         :param classification: The classification of this InfoResponseModules.  # noqa: E501
         :type classification: InfoResponseModulesClassification
+        :param explainability: The explainability of this InfoResponseModules.  # noqa: E501
+        :type explainability: InfoResponseModulesExplainability
         """
         self.openapi_types = {
             'preprocessing': InfoResponseModulesPreprocessing,
-            'classification': InfoResponseModulesClassification
+            'classification': InfoResponseModulesClassification,
+            'explainability': InfoResponseModulesExplainability
         }
 
         self.attribute_map = {
             'preprocessing': 'preprocessing',
-            'classification': 'classification'
+            'classification': 'classification',
+            'explainability': 'explainability'
         }
 
         self._preprocessing = preprocessing
         self._classification = classification
+        self._explainability = explainability
 
     @classmethod
     def from_dict(cls, dikt) -> 'InfoResponseModules':
@@ -89,3 +96,24 @@ class InfoResponseModules(Model):
         """
 
         self._classification = classification
+
+    @property
+    def explainability(self) -> InfoResponseModulesExplainability:
+        """Gets the explainability of this InfoResponseModules.
+
+
+        :return: The explainability of this InfoResponseModules.
+        :rtype: InfoResponseModulesExplainability
+        """
+        return self._explainability
+
+    @explainability.setter
+    def explainability(self, explainability: InfoResponseModulesExplainability):
+        """Sets the explainability of this InfoResponseModules.
+
+
+        :param explainability: The explainability of this InfoResponseModules.
+        :type explainability: InfoResponseModulesExplainability
+        """
+
+        self._explainability = explainability

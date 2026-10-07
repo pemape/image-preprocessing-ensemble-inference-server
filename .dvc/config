@@ -3,4 +3,4 @@
 ['remote "azure_dvc"']
     url = azure://ensemble-preprocessing/dvc-storage
     account_name = mlflowartifact2
-    sas_token = <ask admin for SAS token>
+    sas_token = sp=rl&st=2026-04-04T14:29:18Z&se=2027-02-27T23:44:18Z&spr=https&sv=2024-11-04&sr=c&sig=iWwfG9CPGKfAotspUtrDoFjolJLd3YNcnp6fAlfKkPY%3D

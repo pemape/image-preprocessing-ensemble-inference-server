@@ -24,6 +24,11 @@ info:
     - **Dynamic voting strategies**: Soft voting (probability averaging) or hard voting (majority vote)
     - **Structured results** with confidence scores, certainty levels, and detailed class probabilities
 
+    ### Explainability (opt-in)
+    - **Grad-CAM** heatmaps (via the OmniXAI framework) explaining the ensemble prediction
+    - **Opt-in per request** with the `explain` query parameter; omitted or `false` returns the plain prediction
+    - **Optional per-model heatmaps** with `explain_per_model=true`
+
     ### Performance & Scalability
     - **Redis caching**: Hash-based caching with model configuration awareness
     - **Dynamic micro-batching**: Server-side request coalescing for inference with bounded queueing
@@ -46,6 +51,8 @@ info:
 
     - `voting_strategy`: Choose `soft` (default) or `hard` voting for ensemble classification
     - `include_encoded_images`: Set to `true` to include base64-encoded preprocessed images (not cached)
+    - `explain`: Set to `true` to include a Grad-CAM explanation next to the prediction (not cached)
+    - `explain_per_model`: With `explain=true`, also return one heatmap per ensemble member
 
     ## Dynamic Batching Behavior
 
@@ -137,6 +144,12 @@ paths:
 
         Dynamic batching is handled transparently on the server side.
         Clients do not need to provide any batching-specific path parameter.
+
+        **Explainability**: Set `explain=true` to receive a Grad-CAM explanation of the
+        predicted class in the `explanation` field. Omit it (or `false`) to opt out.
+        The explanation time is reported in `explanation.explanation_time_ms` and is not part of
+        `classification_time_seconds`. If the explanation fails, the prediction is still returned
+        with `explanation.status=FAILED`.
       operationId: classify_image
       parameters:
       - description: Ensemble voting strategy for classification
@@ -153,6 +166,34 @@ paths:
         required: false
         schema:
           $ref: "#/components/schemas/VotingStrategyEnum"
+        style: form
+      - description: Request a Grad-CAM explanation alongside the prediction (opt-in).
+          Explained requests are not cached. Returns 400 if the explainability module
+          is not available.
+        examples:
+          include:
+            summary: Include Grad-CAM explanation
+            value: true
+          exclude:
+            summary: Prediction only (default)
+            value: false
+        explode: true
+        in: query
+        name: explain
+        required: false
+        schema:
+          default: false
+          type: boolean
+        style: form
+      - description: Also return one heatmap per ensemble member (only applies when
+          explain=true)
+        explode: true
+        in: query
+        name: explain_per_model
+        required: false
+        schema:
+          default: false
+          type: boolean
         style: form
       requestBody:
         content:
@@ -174,6 +215,9 @@ paths:
                 moduleNotAvailable:
                   value:
                     error: Classification module not available
+                explainabilityNotAvailable:
+                  value:
+                    error: Explainability module not available
                 invalidVotingStrategy:
                   value:
                     error: Invalid voting_strategy 'invalid'. Must be 'soft' or 'hard'
@@ -354,6 +398,11 @@ paths:
 
         **Dynamic batching**: Classification stage may be dynamically micro-batched server-side.
         This behavior is transparent to clients.
+
+        **Explainability**: Set `explain=true` to receive a Grad-CAM explanation of the
+        predicted class in `process_result.explanation`. Omit it (or `false`) to opt out.
+        Explained requests bypass the cache (read and write), and the explanation time is reported
+        separately in `explanation.explanation_time_ms` (not included in `image_processing_times`).
       operationId: full_process
       parameters:
       - description: Ensemble voting strategy for classification
@@ -388,6 +437,34 @@ paths:
           default: false
           type: boolean
         style: form
+      - description: Request a Grad-CAM explanation alongside the prediction (opt-in).
+          Explained requests are not cached. Returns 400 if the explainability module
+          is not available.
+        examples:
+          include:
+            summary: Include Grad-CAM explanation
+            value: true
+          exclude:
+            summary: Prediction only (default)
+            value: false
+        explode: true
+        in: query
+        name: explain
+        required: false
+        schema:
+          default: false
+          type: boolean
+        style: form
+      - description: Also return one heatmap per ensemble member (only applies when
+          explain=true)
+        explode: true
+        in: query
+        name: explain_per_model
+        required: false
+        schema:
+          default: false
+          type: boolean
+        style: form
       requestBody:
         content:
           multipart/form-data:
@@ -410,6 +487,9 @@ paths:
                     error: Single image endpoint accepts only one image.
                     images_provided: 3
                     max_allowed: 1
+                explainabilityNotAvailable:
+                  value:
+                    error: Explainability module not available
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
           description: "Invalid request (e.g., multiple images provided)"
@@ -480,6 +560,36 @@ components:
         default: false
         type: boolean
       style: form
+    Explain:
+      description: Request a Grad-CAM explanation alongside the prediction (opt-in).
+        Explained requests are not cached. Returns 400 if the explainability module
+        is not available.
+      examples:
+        include:
+          summary: Include Grad-CAM explanation
+          value: true
+        exclude:
+          summary: Prediction only (default)
+          value: false
+      explode: true
+      in: query
+      name: explain
+      required: false
+      schema:
+        default: false
+        type: boolean
+      style: form
+    ExplainPerModel:
+      description: Also return one heatmap per ensemble member (only applies when
+        explain=true)
+      explode: true
+      in: query
+      name: explain_per_model
+      required: false
+      schema:
+        default: false
+        type: boolean
+      style: form
   schemas:
     OperationStatus:
       description: General operation status
@@ -501,52 +611,73 @@ components:
     ProcessResult:
       description: Processing result and classification outcome
       example:
+        status: SUCCESS
+        cached: false
         image_name: fundus_001.jpg
+        image_index: 0
         image_properties:
-          original_height_px: 2304
           original_width_px: 3456
+          original_height_px: 2304
           processed_width_px: 500
           processed_height_px: 500
-        cached: false
-        image_index: 0
-        batch_processing_metrics:
-          batch_size: 4
-          batch_id: BATCH-a1b2c3d4e5f6
-          batch_execution_ms: 892.3
-          batch_total_ms: 907.3
-          batch_wait_ms: 15.0
         image_processing_times:
-          total_ms: 1137.8
           preprocessing_ms: 245.5
           inference_ms: 892.3
+          total_ms: 1137.8
+        batch_processing_metrics:
+          batch_id: BATCH-a1b2c3d4e5f6
+          batch_wait_ms: 15.0
+          batch_execution_ms: 892.3
+          batch_total_ms: 907.3
+          batch_size: 4
         classification:
-          class_probabilities:
-          - probability: 0.85
-            id: DR_0
-            label: No Diabetic Retinopathy
-          - probability: 0.85
-            id: DR_0
-            label: No Diabetic Retinopathy
-          - probability: 0.85
-            id: DR_0
-            label: No Diabetic Retinopathy
-          - probability: 0.85
-            id: DR_0
-            label: No Diabetic Retinopathy
-          - probability: 0.85
-            id: DR_0
-            label: No Diabetic Retinopathy
-          confidence_score: 0.85
           predicted_class_id: DR_0
           predicted_class_label: No Diabetic Retinopathy
+          confidence_score: 0.85
           diagnosis_certainty: HIGH
+          class_probabilities:
+          - id: DR_0
+            label: No Diabetic Retinopathy
+            probability: 0.85
+          - id: DR_0
+            label: No Diabetic Retinopathy
+            probability: 0.85
+          - id: DR_0
+            label: No Diabetic Retinopathy
+            probability: 0.85
+          - id: DR_0
+            label: No Diabetic Retinopathy
+            probability: 0.85
+          - id: DR_0
+            label: No Diabetic Retinopathy
+            probability: 0.85
+        explanation:
+          status: SUCCESS
+          method: Grad-CAM
+          framework: OmniXAI
+          target_class_id: DR_2
+          target_class_label: Moderate Non-Proliferative DR
+          heatmap_overlay: heatmap_overlay
+          heatmap: heatmap
+          explanation_time_ms: 412.5
+          per_model:
+          - model_architecture: efficientnetb4
+            preprocessing_variant: rgb_clahe
+            target_layer: features.-1
+            heatmap_overlay: heatmap_overlay
+            heatmap: heatmap
+          - model_architecture: efficientnetb4
+            preprocessing_variant: rgb_clahe
+            target_layer: features.-1
+            heatmap_overlay: heatmap_overlay
+            heatmap: heatmap
+          error: error
         preprocessed_images:
-          min_pooling: min_pooling
           original: original
           rgb_clahe: rgb_clahe
+          min_pooling: min_pooling
           lab_clahe: lab_clahe
           max_green_gsc: max_green_gsc
-        status: SUCCESS
       properties:
         status:
           $ref: "#/components/schemas/OperationStatus"
@@ -573,6 +704,8 @@ components:
           $ref: "#/components/schemas/BatchProcessingMetrics"
         classification:
           $ref: "#/components/schemas/ClassificationResult"
+        explanation:
+          $ref: "#/components/schemas/ExplanationResult"
         preprocessed_images:
           $ref: "#/components/schemas/PreprocessedImages"
       required:
@@ -584,17 +717,17 @@ components:
     ProcessMetadata:
       description: Metadata about the processing request
       example:
+        request_id: REQ-20251030143022-a1b2c3d4
         timestamp_utc: 2025-10-30T14:30:22.123Z
         model_configuration:
           model_architecture: EfficientNetB4
-          voting_strategy: Soft-Voting
           ensemble_size: 5
           trained_datasets:
           - APTOS-2019-DR-Classification
+          voting_strategy: Soft-Voting
         version_info:
-          model_version: 20251030-v2.1
           api_version: 1.0.0
-        request_id: REQ-20251030143022-a1b2c3d4
+          model_version: 20251030-v2.1
       properties:
         request_id:
           description: Unique request identifier
@@ -619,12 +752,12 @@ components:
       type: object
     HealthResponse:
       example:
-        modules:
-          preprocessor: true
-          classifier: true
         status: healthy
         timestamp: 1730000000
         uptime: 3600.5
+        modules:
+          preprocessor: true
+          classifier: true
       properties:
         status:
           example: healthy
@@ -647,26 +780,30 @@ components:
       type: object
     InfoResponse:
       example:
-        endpoints:
-          key: endpoints
         name: Fundus Image Processing and Classification Server
-        paper_reference: https://openapi-generator.tech
         version: 1.0.0
         modules:
           preprocessing:
-            clipping_methods: 6
-            variants: 0
             enabled: true
+            variants: 0
+            clipping_methods: 6
           classification:
+            enabled: true
             models: 1
             voting_strategy: soft
             dynamic_batching:
+              enabled: false
+              max_batch_size: 8
               max_wait_ms: 15
               max_queue_size: 256
-              max_batch_size: 8
-              enabled: false
               request_timeout_s: 15
+          explainability:
             enabled: true
+            method: gradcam
+            framework: OmniXAI
+        endpoints:
+          key: endpoints
+        paper_reference: https://openapi-generator.tech
       properties:
         name:
           example: Fundus Image Processing and Classification Server
@@ -692,22 +829,22 @@ components:
     ConfigResponse:
       example:
         preprocessing:
-          parallel_processing: true
           target_resolution:
           - 500
           - 500
           normalize_pixels: true
           black_border_clipping: true
+          parallel_processing: true
         classification:
           voting_strategy: soft
           force_cpu: true
+          confidence_threshold: 0.8008282
           dynamic_batching:
+            enabled: false
+            max_batch_size: 8
             max_wait_ms: 15
             max_queue_size: 256
-            max_batch_size: 8
-            enabled: false
             request_timeout_s: 15
-          confidence_threshold: 0.8008282
       properties:
         preprocessing:
           $ref: "#/components/schemas/ConfigResponse_preprocessing"
@@ -717,10 +854,10 @@ components:
       type: object
     DynamicBatchingConfig:
       example:
+        enabled: false
+        max_batch_size: 8
         max_wait_ms: 15
         max_queue_size: 256
-        max_batch_size: 8
-        enabled: false
         request_timeout_s: 15
       properties:
         enabled:
@@ -753,16 +890,16 @@ components:
     ModelInfoResponse:
       example:
         models:
-        - num_classes: 0
+        - architecture: efficientnetb4
           dataset: APTOS5
           preprocessing_variant: original
           model_path: model_path
-          architecture: efficientnetb4
-        - num_classes: 0
+          num_classes: 0
+        - architecture: efficientnetb4
           dataset: APTOS5
           preprocessing_variant: original
           model_path: model_path
-          architecture: efficientnetb4
+          num_classes: 0
         voting_strategy: soft
         device: cuda
         total_models: 6
@@ -785,21 +922,21 @@ components:
       type: object
     PreprocessResponse:
       example:
+        status: SUCCESS
+        preprocessed_images:
+          original: original
+          rgb_clahe: rgb_clahe
+          min_pooling: min_pooling
+          lab_clahe: lab_clahe
+          max_green_gsc: max_green_gsc
         metadata:
           image_properties:
-            original_height_px: 2304
             original_width_px: 3456
+            original_height_px: 2304
             processed_width_px: 500
             processed_height_px: 500
           processing_time_seconds: 0.8008282
           variant_count: 6
-        preprocessed_images:
-          min_pooling: min_pooling
-          original: original
-          rgb_clahe: rgb_clahe
-          lab_clahe: lab_clahe
-          max_green_gsc: max_green_gsc
-        status: SUCCESS
       properties:
         status:
           $ref: "#/components/schemas/OperationStatus"
@@ -813,36 +950,57 @@ components:
       type: object
     ClassifyResponse:
       example:
+        status: SUCCESS
         cached: false
         classification_time_seconds: 0.8008282
         batch_processing_metrics:
-          batch_size: 4
           batch_id: BATCH-a1b2c3d4e5f6
+          batch_wait_ms: 15.0
           batch_execution_ms: 892.3
           batch_total_ms: 907.3
-          batch_wait_ms: 15.0
+          batch_size: 4
         classification:
-          class_probabilities:
-          - probability: 0.85
-            id: DR_0
-            label: No Diabetic Retinopathy
-          - probability: 0.85
-            id: DR_0
-            label: No Diabetic Retinopathy
-          - probability: 0.85
-            id: DR_0
-            label: No Diabetic Retinopathy
-          - probability: 0.85
-            id: DR_0
-            label: No Diabetic Retinopathy
-          - probability: 0.85
-            id: DR_0
-            label: No Diabetic Retinopathy
-          confidence_score: 0.85
           predicted_class_id: DR_0
           predicted_class_label: No Diabetic Retinopathy
+          confidence_score: 0.85
           diagnosis_certainty: HIGH
-        status: SUCCESS
+          class_probabilities:
+          - id: DR_0
+            label: No Diabetic Retinopathy
+            probability: 0.85
+          - id: DR_0
+            label: No Diabetic Retinopathy
+            probability: 0.85
+          - id: DR_0
+            label: No Diabetic Retinopathy
+            probability: 0.85
+          - id: DR_0
+            label: No Diabetic Retinopathy
+            probability: 0.85
+          - id: DR_0
+            label: No Diabetic Retinopathy
+            probability: 0.85
+        explanation:
+          status: SUCCESS
+          method: Grad-CAM
+          framework: OmniXAI
+          target_class_id: DR_2
+          target_class_label: Moderate Non-Proliferative DR
+          heatmap_overlay: heatmap_overlay
+          heatmap: heatmap
+          explanation_time_ms: 412.5
+          per_model:
+          - model_architecture: efficientnetb4
+            preprocessing_variant: rgb_clahe
+            target_layer: features.-1
+            heatmap_overlay: heatmap_overlay
+            heatmap: heatmap
+          - model_architecture: efficientnetb4
+            preprocessing_variant: rgb_clahe
+            target_layer: features.-1
+            heatmap_overlay: heatmap_overlay
+            heatmap: heatmap
+          error: error
       properties:
         status:
           $ref: "#/components/schemas/OperationStatus"
@@ -859,70 +1017,214 @@ components:
           $ref: "#/components/schemas/BatchProcessingMetrics"
         classification:
           $ref: "#/components/schemas/ClassificationResult"
+        explanation:
+          $ref: "#/components/schemas/ExplanationResult"
       title: ClassifyResponse
+      type: object
+    ExplanationResult:
+      description: Grad-CAM explanation of the ensemble prediction (explain=true)
+      example:
+        status: SUCCESS
+        method: Grad-CAM
+        framework: OmniXAI
+        target_class_id: DR_2
+        target_class_label: Moderate Non-Proliferative DR
+        heatmap_overlay: heatmap_overlay
+        heatmap: heatmap
+        explanation_time_ms: 412.5
+        per_model:
+        - model_architecture: efficientnetb4
+          preprocessing_variant: rgb_clahe
+          target_layer: features.-1
+          heatmap_overlay: heatmap_overlay
+          heatmap: heatmap
+        - model_architecture: efficientnetb4
+          preprocessing_variant: rgb_clahe
+          target_layer: features.-1
+          heatmap_overlay: heatmap_overlay
+          heatmap: heatmap
+        error: error
+      properties:
+        status:
+          $ref: "#/components/schemas/OperationStatus"
+        method:
+          enum:
+          - Grad-CAM
+          example: Grad-CAM
+          title: method
+          type: string
+        framework:
+          description: Library that produced the explanation
+          example: OmniXAI
+          title: framework
+          type: string
+        target_class_id:
+          description: Class the heatmap explains (the ensemble prediction)
+          enum:
+          - DR_0
+          - DR_1
+          - DR_2
+          - DR_3
+          - DR_4
+          example: DR_2
+          title: target_class_id
+          type: string
+        target_class_label:
+          example: Moderate Non-Proliferative DR
+          title: target_class_label
+          type: string
+        heatmap_overlay:
+          description: Base64-encoded JPEG - ensemble heatmap blended over the image
+          title: heatmap_overlay
+          type: string
+        heatmap:
+          description: Base64-encoded JPEG - colorized ensemble heatmap only
+          title: heatmap
+          type: string
+        explanation_time_ms:
+          description: Time spent generating the explanation (not included in image_processing_times)
+          example: 412.5
+          format: float
+          title: explanation_time_ms
+          type: number
+        per_model:
+          description: Per-ensemble-member explanations (only if explain_per_model=true)
+          items:
+            $ref: "#/components/schemas/ModelExplanation"
+          nullable: true
+          title: per_model
+          type: array
+        error:
+          description: Reason the explanation failed (only if status=FAILED)
+          nullable: true
+          title: error
+          type: string
+      required:
+      - status
+      title: ExplanationResult
+      type: object
+    ModelExplanation:
+      description: Grad-CAM explanation of a single ensemble member
+      example:
+        model_architecture: efficientnetb4
+        preprocessing_variant: rgb_clahe
+        target_layer: features.-1
+        heatmap_overlay: heatmap_overlay
+        heatmap: heatmap
+      properties:
+        model_architecture:
+          example: efficientnetb4
+          title: model_architecture
+          type: string
+        preprocessing_variant:
+          description: Preprocessing variant the explained model consumed
+          example: rgb_clahe
+          title: preprocessing_variant
+          type: string
+        target_layer:
+          description: Network layer the Grad-CAM was computed on
+          example: features.-1
+          title: target_layer
+          type: string
+        heatmap_overlay:
+          description: Base64-encoded JPEG - heatmap blended over the model input
+            image
+          title: heatmap_overlay
+          type: string
+        heatmap:
+          description: Base64-encoded JPEG - colorized Grad-CAM heatmap only
+          title: heatmap
+          type: string
+      required:
+      - heatmap
+      - heatmap_overlay
+      - model_architecture
+      - preprocessing_variant
+      title: ModelExplanation
       type: object
     ProcessResponse:
       description: Response for single image processing (/process endpoint)
       example:
         process_metadata:
+          request_id: REQ-20251030143022-a1b2c3d4
           timestamp_utc: 2025-10-30T14:30:22.123Z
           model_configuration:
             model_architecture: EfficientNetB4
-            voting_strategy: Soft-Voting
             ensemble_size: 5
             trained_datasets:
             - APTOS-2019-DR-Classification
+            voting_strategy: Soft-Voting
           version_info:
-            model_version: 20251030-v2.1
             api_version: 1.0.0
-          request_id: REQ-20251030143022-a1b2c3d4
+            model_version: 20251030-v2.1
         process_result:
+          status: SUCCESS
+          cached: false
           image_name: fundus_001.jpg
+          image_index: 0
           image_properties:
-            original_height_px: 2304
             original_width_px: 3456
+            original_height_px: 2304
             processed_width_px: 500
             processed_height_px: 500
-          cached: false
-          image_index: 0
-          batch_processing_metrics:
-            batch_size: 4
-            batch_id: BATCH-a1b2c3d4e5f6
-            batch_execution_ms: 892.3
-            batch_total_ms: 907.3
-            batch_wait_ms: 15.0
           image_processing_times:
-            total_ms: 1137.8
             preprocessing_ms: 245.5
             inference_ms: 892.3
+            total_ms: 1137.8
+          batch_processing_metrics:
+            batch_id: BATCH-a1b2c3d4e5f6
+            batch_wait_ms: 15.0
+            batch_execution_ms: 892.3
+            batch_total_ms: 907.3
+            batch_size: 4
           classification:
-            class_probabilities:
-            - probability: 0.85
-              id: DR_0
-              label: No Diabetic Retinopathy
-            - probability: 0.85
-              id: DR_0
-              label: No Diabetic Retinopathy
-            - probability: 0.85
-              id: DR_0
-              label: No Diabetic Retinopathy
-            - probability: 0.85
-              id: DR_0
-              label: No Diabetic Retinopathy
-            - probability: 0.85
-              id: DR_0
-              label: No Diabetic Retinopathy
-            confidence_score: 0.85
             predicted_class_id: DR_0
             predicted_class_label: No Diabetic Retinopathy
+            confidence_score: 0.85
             diagnosis_certainty: HIGH
+            class_probabilities:
+            - id: DR_0
+              label: No Diabetic Retinopathy
+              probability: 0.85
+            - id: DR_0
+              label: No Diabetic Retinopathy
+              probability: 0.85
+            - id: DR_0
+              label: No Diabetic Retinopathy
+              probability: 0.85
+            - id: DR_0
+              label: No Diabetic Retinopathy
+              probability: 0.85
+            - id: DR_0
+              label: No Diabetic Retinopathy
+              probability: 0.85
+          explanation:
+            status: SUCCESS
+            method: Grad-CAM
+            framework: OmniXAI
+            target_class_id: DR_2
+            target_class_label: Moderate Non-Proliferative DR
+            heatmap_overlay: heatmap_overlay
+            heatmap: heatmap
+            explanation_time_ms: 412.5
+            per_model:
+            - model_architecture: efficientnetb4
+              preprocessing_variant: rgb_clahe
+              target_layer: features.-1
+              heatmap_overlay: heatmap_overlay
+              heatmap: heatmap
+            - model_architecture: efficientnetb4
+              preprocessing_variant: rgb_clahe
+              target_layer: features.-1
+              heatmap_overlay: heatmap_overlay
+              heatmap: heatmap
+            error: error
           preprocessed_images:
-            min_pooling: min_pooling
             original: original
             rgb_clahe: rgb_clahe
+            min_pooling: min_pooling
             lab_clahe: lab_clahe
             max_green_gsc: max_green_gsc
-          status: SUCCESS
       properties:
         process_metadata:
           $ref: "#/components/schemas/ProcessMetadata"
@@ -952,13 +1254,13 @@ components:
       type: object
     CacheStatsResponse:
       example:
-        connected: true
-        hits: 8945
-        hit_rate: 0.854
-        misses: 1523
-        memory_usage: 45.2 MB
         enabled: true
+        connected: true
         total_keys: 1523
+        memory_usage: 45.2 MB
+        hits: 8945
+        misses: 1523
+        hit_rate: 0.854
       properties:
         enabled:
           example: true
@@ -993,10 +1295,10 @@ components:
       type: object
     CacheHealthResponse:
       example:
-        connected: true
-        response_time_ms: 2.5
         enabled: true
+        connected: true
         status: healthy
+        response_time_ms: 2.5
       properties:
         enabled:
           example: true
@@ -1023,10 +1325,10 @@ components:
       type: object
     CacheClearResponse:
       example:
-        pattern: all
+        status: success
         message: Cleared 523 cached entries
         deleted_count: 523
-        status: success
+        pattern: all
       properties:
         status:
           example: success
@@ -1049,9 +1351,9 @@ components:
     ClassProbability:
       description: Probability for a single DR class
       example:
-        probability: 0.85
         id: DR_0
         label: No Diabetic Retinopathy
+        probability: 0.85
       properties:
         id:
           description: Class ID
@@ -1085,26 +1387,26 @@ components:
     ClassificationResult:
       description: Structured classification result
       example:
-        class_probabilities:
-        - probability: 0.85
-          id: DR_0
-          label: No Diabetic Retinopathy
-        - probability: 0.85
-          id: DR_0
-          label: No Diabetic Retinopathy
-        - probability: 0.85
-          id: DR_0
-          label: No Diabetic Retinopathy
-        - probability: 0.85
-          id: DR_0
-          label: No Diabetic Retinopathy
-        - probability: 0.85
-          id: DR_0
-          label: No Diabetic Retinopathy
-        confidence_score: 0.85
         predicted_class_id: DR_0
         predicted_class_label: No Diabetic Retinopathy
+        confidence_score: 0.85
         diagnosis_certainty: HIGH
+        class_probabilities:
+        - id: DR_0
+          label: No Diabetic Retinopathy
+          probability: 0.85
+        - id: DR_0
+          label: No Diabetic Retinopathy
+          probability: 0.85
+        - id: DR_0
+          label: No Diabetic Retinopathy
+          probability: 0.85
+        - id: DR_0
+          label: No Diabetic Retinopathy
+          probability: 0.85
+        - id: DR_0
+          label: No Diabetic Retinopathy
+          probability: 0.85
       properties:
         predicted_class_id:
           enum:
@@ -1158,9 +1460,9 @@ components:
       type: object
     ImageProcessingTimes:
       example:
-        total_ms: 1137.8
         preprocessing_ms: 245.5
         inference_ms: 892.3
+        total_ms: 1137.8
       properties:
         preprocessing_ms:
           description: Preprocessing time in milliseconds
@@ -1187,11 +1489,11 @@ components:
     BatchProcessingMetrics:
       description: Dynamic batch queue and execution timing metrics
       example:
-        batch_size: 4
         batch_id: BATCH-a1b2c3d4e5f6
+        batch_wait_ms: 15.0
         batch_execution_ms: 892.3
         batch_total_ms: 907.3
-        batch_wait_ms: 15.0
+        batch_size: 4
       properties:
         batch_id:
           description: Unique identifier for the executed dynamic batch
@@ -1227,8 +1529,8 @@ components:
       type: object
     ImageProperties:
       example:
-        original_height_px: 2304
         original_width_px: 3456
+        original_height_px: 2304
         processed_width_px: 500
         processed_height_px: 500
       properties:
@@ -1257,8 +1559,8 @@ components:
       type: object
     VersionInfo:
       example:
-        model_version: 20251030-v2.1
         api_version: 1.0.0
+        model_version: 20251030-v2.1
       properties:
         api_version:
           example: 1.0.0
@@ -1276,10 +1578,10 @@ components:
     ModelConfiguration:
       example:
         model_architecture: EfficientNetB4
-        voting_strategy: Soft-Voting
         ensemble_size: 5
         trained_datasets:
         - APTOS-2019-DR-Classification
+        voting_strategy: Soft-Voting
       properties:
         model_architecture:
           example: EfficientNetB4
@@ -1322,9 +1624,9 @@ components:
     PreprocessedImages:
       description: Base64-encoded preprocessed image variants
       example:
-        min_pooling: min_pooling
         original: original
         rgb_clahe: rgb_clahe
+        min_pooling: min_pooling
         lab_clahe: lab_clahe
         max_green_gsc: max_green_gsc
       properties:
@@ -1407,9 +1709,9 @@ components:
       type: object
     InfoResponse_modules_preprocessing:
       example:
-        clipping_methods: 6
-        variants: 0
         enabled: true
+        variants: 0
+        clipping_methods: 6
       properties:
         enabled:
           title: enabled
@@ -1424,15 +1726,15 @@ components:
       type: object
     InfoResponse_modules_classification:
       example:
+        enabled: true
         models: 1
         voting_strategy: soft
         dynamic_batching:
+          enabled: false
+          max_batch_size: 8
           max_wait_ms: 15
           max_queue_size: 256
-          max_batch_size: 8
-          enabled: false
           request_timeout_s: 15
-        enabled: true
       properties:
         enabled:
           title: enabled
@@ -1446,37 +1748,65 @@ components:
           $ref: "#/components/schemas/DynamicBatchingConfig"
       title: InfoResponse_modules_classification
       type: object
+    InfoResponse_modules_explainability:
+      example:
+        enabled: true
+        method: gradcam
+        framework: OmniXAI
+      properties:
+        enabled:
+          description: True when explain=true requests are accepted
+          title: enabled
+          type: boolean
+        method:
+          example: gradcam
+          nullable: true
+          title: method
+          type: string
+        framework:
+          example: OmniXAI
+          nullable: true
+          title: framework
+          type: string
+      title: InfoResponse_modules_explainability
+      type: object
     InfoResponse_modules:
       example:
         preprocessing:
-          clipping_methods: 6
-          variants: 0
           enabled: true
+          variants: 0
+          clipping_methods: 6
         classification:
+          enabled: true
           models: 1
           voting_strategy: soft
           dynamic_batching:
+            enabled: false
+            max_batch_size: 8
             max_wait_ms: 15
             max_queue_size: 256
-            max_batch_size: 8
-            enabled: false
             request_timeout_s: 15
+        explainability:
           enabled: true
+          method: gradcam
+          framework: OmniXAI
       properties:
         preprocessing:
           $ref: "#/components/schemas/InfoResponse_modules_preprocessing"
         classification:
           $ref: "#/components/schemas/InfoResponse_modules_classification"
+        explainability:
+          $ref: "#/components/schemas/InfoResponse_modules_explainability"
       title: InfoResponse_modules
       type: object
     ConfigResponse_preprocessing:
       example:
-        parallel_processing: true
         target_resolution:
         - 500
         - 500
         normalize_pixels: true
         black_border_clipping: true
+        parallel_processing: true
       properties:
         target_resolution:
           example:
@@ -1501,13 +1831,13 @@ components:
       example:
         voting_strategy: soft
         force_cpu: true
+        confidence_threshold: 0.8008282
         dynamic_batching:
+          enabled: false
+          max_batch_size: 8
           max_wait_ms: 15
           max_queue_size: 256
-          max_batch_size: 8
-          enabled: false
           request_timeout_s: 15
-        confidence_threshold: 0.8008282
       properties:
         voting_strategy:
           $ref: "#/components/schemas/VotingStrategyEnum"
@@ -1524,11 +1854,11 @@ components:
       type: object
     ModelInfoResponse_models_inner:
       example:
-        num_classes: 0
+        architecture: efficientnetb4
         dataset: APTOS5
         preprocessing_variant: original
         model_path: model_path
-        architecture: efficientnetb4
+        num_classes: 0
       properties:
         architecture:
           example: efficientnetb4
@@ -1553,8 +1883,8 @@ components:
     PreprocessResponse_metadata:
       example:
         image_properties:
-          original_height_px: 2304
           original_width_px: 3456
+          original_height_px: 2304
           processed_width_px: 500
           processed_height_px: 500
         processing_time_seconds: 0.8008282

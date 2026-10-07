@@ -24,6 +24,7 @@ ensemble_inference/models/config_response_classification.py
 ensemble_inference/models/config_response_preprocessing.py
 ensemble_inference/models/dynamic_batching_config.py
 ensemble_inference/models/error_response.py
+ensemble_inference/models/explanation_result.py
 ensemble_inference/models/health_response.py
 ensemble_inference/models/health_response_modules.py
 ensemble_inference/models/image_processing_times.py
@@ -31,8 +32,10 @@ ensemble_inference/models/image_properties.py
 ensemble_inference/models/info_response.py
 ensemble_inference/models/info_response_modules.py
 ensemble_inference/models/info_response_modules_classification.py
+ensemble_inference/models/info_response_modules_explainability.py
 ensemble_inference/models/info_response_modules_preprocessing.py
 ensemble_inference/models/model_configuration.py
+ensemble_inference/models/model_explanation.py
 ensemble_inference/models/model_info_response.py
 ensemble_inference/models/model_info_response_models_inner.py
 ensemble_inference/models/operation_status.py

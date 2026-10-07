@@ -54,6 +54,18 @@ dynamic_batching:
   max_queue_size: 256
   request_timeout_s: 15
 
+# Explainability (XAI): Grad-CAM via OmniXAI. Computed only when the client sends explain=true.
+explainability:
+  enabled: true
+  method: gradcam
+  heatmap_alpha: 0.4 # overlay opacity of the heatmap (0-1)
+  jpeg_quality: 90
+  # Grad-CAM target layer per architecture (dotted path; integer tokens index containers).
+  # A single model entry may override it with its own `target_layer` key.
+  target_layers:
+    efficientnetb4: "features.-1"
+    xception: "bn4"
+
 redis:
   enabled: true
   host: localhost

@@ -42,11 +42,19 @@ from ensemble_inference.models.preprocess_response_metadata import (
 from ensemble_inference.models.process_metadata import ProcessMetadata
 from ensemble_inference.models.process_response import ProcessResponse
 from ensemble_inference.models.version_info import VersionInfo
+from ensemble_inference.models.explanation_result import ExplanationResult
+from ensemble_inference.models.model_explanation import ModelExplanation
 
 # Import our modules
 from fundus_preprocessor import FundusPreprocessor
 from diabetic_retinopathy_classifier import DiabeticRetinopathyClassifier
 from redis_cache_manager import RedisCacheManager
+from explainability import (
+    ExplainabilityConfig,
+    ExplainabilityUnavailableError,
+    ExplanationService,
+    RenderedExplanation,
+)
 
 
 class DynamicBatchInferenceManager:
@@ -279,6 +287,9 @@ class FundusInferenceServer:
         # Initialize dynamic batch manager (optional)
         self.dynamic_batcher = self._initialize_dynamic_batcher()
 
+        # Initialize explainability layer (optional, opt-in per request)
+        self.explanation_service = self._initialize_explainer()
+
         # Setup Flask app
         self.app = self._create_flask_app()
 
@@ -333,6 +344,96 @@ class FundusInferenceServer:
             max_wait_ms=batching_cfg.get("max_wait_ms", 15),
             max_queue_size=batching_cfg.get("max_queue_size", 256),
         )
+
+    # ========== Explainability Helpers ==========
+
+    def _initialize_explainer(self) -> Optional[ExplanationService]:
+        """Initialize the explainability service from classifier config.
+
+        Returns None when disabled or unavailable, so the API can reject
+        explain=true requests instead of failing the whole server.
+        """
+        if not self.classifier:
+            return None
+
+        try:
+            config = ExplainabilityConfig.from_dict(
+                self.classifier.config.get("explainability")
+            )
+            if not config.enabled:
+                self.logger.info("Explainability module disabled in configuration")
+                return None
+
+            service = ExplanationService.create(
+                self.classifier.ensemble.models, config, self.logger
+            )
+            self.logger.info("Explainability module loaded (%s)", config.method)
+            return service
+        except ExplainabilityUnavailableError as e:
+            self.logger.warning(f"Explainability module unavailable: {e}")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize explainability module: {e}")
+        return None
+
+    @staticmethod
+    def _get_bool_arg(name: str) -> bool:
+        """Read a boolean query parameter (default false)."""
+        return request.args.get(name, "false").lower() == "true"
+
+    def _get_explanation_flags(self) -> tuple:
+        """Return (explain, explain_per_model); per-model only applies with explain."""
+        explain = self._get_bool_arg("explain")
+        return explain, explain and self._get_bool_arg("explain_per_model")
+
+    def _build_explanation_result(
+        self, rendered: RenderedExplanation
+    ) -> ExplanationResult:
+        """Map the explainability layer output onto the API schema model."""
+        class_info = self._get_class_mapping()[rendered.target_class_index]
+
+        per_model = None
+        if rendered.per_model is not None:
+            per_model = [
+                ModelExplanation(
+                    model_architecture=m.model_architecture,
+                    preprocessing_variant=m.preprocessing_variant,
+                    target_layer=m.target_layer,
+                    heatmap_overlay=m.heatmap_overlay,
+                    heatmap=m.heatmap,
+                )
+                for m in rendered.per_model
+            ]
+
+        return ExplanationResult(
+            status=OperationStatus.SUCCESS,
+            method=rendered.method,
+            framework=rendered.framework,
+            target_class_id=class_info["id"],
+            target_class_label=class_info["label"],
+            heatmap_overlay=rendered.heatmap_overlay,
+            heatmap=rendered.heatmap,
+            explanation_time_ms=rendered.explanation_time_ms,
+            per_model=per_model,
+        )
+
+    def _run_explanation(
+        self,
+        variants: Dict[str, np.ndarray],
+        classification_result: ClassificationResult,
+        per_model: bool,
+    ) -> ExplanationResult:
+        """Explain the ensemble prediction; failures degrade to status=FAILED."""
+        try:
+            target_class_index = int(
+                classification_result.predicted_class_id.split("_")[1]
+            )
+            rendered = self.explanation_service.explain(
+                variants, target_class_index, include_per_model=per_model
+            )
+            return self._build_explanation_result(rendered)
+        except Exception as e:
+            self.logger.error(f"Explanation error: {e}")
+            return ExplanationResult(status=OperationStatus.FAILED, error=str(e))
 
     # ========== Response Schema Helpers ==========
 
@@ -663,6 +764,17 @@ class FundusInferenceServer:
                         "max_queue_size": self.dynamic_batcher.max_queue_size,
                     },
                 },
+                "explainability": {
+                    "enabled": self.explanation_service is not None,
+                    "method": (
+                        self.explanation_service.config.method
+                        if self.explanation_service
+                        else None
+                    ),
+                    "framework": (
+                        "OmniXAI" if self.explanation_service else None
+                    ),
+                },
             },
             "endpoints": {
                 "GET /health": "Health check",
@@ -670,8 +782,8 @@ class FundusInferenceServer:
                 "GET /config": "Configuration details",
                 "GET /models": "Model information",
                 "POST /preprocess": "Image preprocessing only",
-                "POST /classify": "Classification from preprocessed images",
-                "POST /process": "Full pipeline (preprocess + classify)",
+                "POST /classify": "Classification from preprocessed images (optional explain=true)",
+                "POST /process": "Full pipeline (preprocess + classify, optional explain=true)",
             },
             "paper_reference": "https://ietresearch.onlinelibrary.wiley.com/doi/full/10.1049/ipr2.12987",
         }
@@ -707,6 +819,7 @@ class FundusInferenceServer:
                 "dynamic_batching": self.classifier.config.get(
                     "dynamic_batching", {}
                 ),
+                "explainability": self.classifier.config.get("explainability", {}),
             }
 
         return jsonify(config_info)
@@ -806,6 +919,10 @@ class FundusInferenceServer:
             if not self.classifier:
                 return jsonify({"error": "Classification module not available"}), 400
 
+            explain_requested, explain_per_model = self._get_explanation_flags()
+            if explain_requested and not self.explanation_service:
+                return jsonify({"error": "Explainability module not available"}), 400
+
             # Get voting strategy from query parameter (default to config value)
             voting_strategy = request.args.get(
                 "voting_strategy", self.classifier.ensemble.voting_strategy
@@ -874,6 +991,11 @@ class FundusInferenceServer:
             )
             response.classification = self._build_classification_result(results)
 
+            if explain_requested:
+                response.explanation = self._run_explanation(
+                    preprocessed_images, response.classification, explain_per_model
+                )
+
             return jsonify(response.to_dict())
 
         except Exception as e:
@@ -904,6 +1026,10 @@ class FundusInferenceServer:
 
             image, image_filename = image_data
 
+            explain_requested, explain_per_model = self._get_explanation_flags()
+            if explain_requested and not self.explanation_service:
+                return jsonify({"error": "Explainability module not available"}), 400
+
             # Get model configuration for cache key
             if self.classifier:
                 voting_strategy = request.args.get(
@@ -919,13 +1045,18 @@ class FundusInferenceServer:
                 model_architecture = "unknown"
                 ensemble_size = 0
 
-            # CHECK CACHE: Try to get cached result with model configuration
-            cached_result = self.cache.get(
-                image_filename,
-                image,
-                voting_strategy=voting_strategy,
-                model_architecture=model_architecture,
-                ensemble_size=ensemble_size,
+            # CHECK CACHE: Try to get cached result with model configuration.
+            # Explained requests bypass the cache (cached entries hold no heatmaps).
+            cached_result = (
+                None
+                if explain_requested
+                else self.cache.get(
+                    image_filename,
+                    image,
+                    voting_strategy=voting_strategy,
+                    model_architecture=model_architecture,
+                    ensemble_size=ensemble_size,
+                )
             )
             if cached_result is not None:
                 self.logger.debug(f"Cache HIT for image: {image_filename}")
@@ -1132,6 +1263,13 @@ class FundusInferenceServer:
                     else None
                 )
 
+                if explain_requested:
+                    process_result.explanation = self._run_explanation(
+                        preprocessed_image_variants,
+                        classification_result,
+                        explain_per_model,
+                    )
+
                 # Optionally include preprocessed images
                 if include_encoded_images:
                     preprocessed_images = {}
@@ -1175,8 +1313,8 @@ class FundusInferenceServer:
                 response = process_response.to_dict()
 
                 # STORE IN CACHE: Save result for future requests with model configuration
-                # Don't cache if include_images=true (too large)
-                if not include_encoded_images:
+                # Don't cache if include_images=true (too large) or explanation requested
+                if not include_encoded_images and not explain_requested:
                     cache_stored = self.cache.set(
                         image_filename,
                         image,
